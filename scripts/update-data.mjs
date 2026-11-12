@@ -27,13 +27,13 @@ async function api(path) {
 const avg = xs => xs.length ? xs.reduce((a,b)=>a+b,0)/xs.length : null;
 function poisson(l,k){let p=Math.exp(-l),v=p;for(let i=1;i<=k;i++){p*=l/i;v+=p;}return v;}
 function probs(h,a){
-  let home=0,draw=0,away=0,over=0,btts=0;
+  let home=0,draw=0,away=0,over=0,btts=0,best=0,score="0-0";
   for(let i=0;i<=8;i++)for(let j=0;j<=8;j++){
     const p=Math.exp(-h)*h**i/factorial(i)*Math.exp(-a)*a**j/factorial(j);
-    if(i>j)home+=p;else if(i===j)draw+=p;else away+=p;
+    if(i>j)home+=p;else if(i===j)draw+=p;else away+=p;if(p>best){best=p;score=i+"-"+j;}
     if(i+j>=3)over+=p;if(i>0&&j>0)btts+=p;
   }
-  return {home,draw,away,over,btts};
+  return {home,draw,away,over,btts,score};
 }
 function factorial(n){let x=1;for(let i=2;i<=n;i++)x*=i;return x;}
 const pct=x=>Math.round(x*100);
@@ -64,7 +64,7 @@ for(const league of LEAGUES){
         if(homeRate>0&&awayRate>0){
           const p=probs(homeRate,awayRate);
           const outcomes=[["1",p.home],["X",p.draw],["2",p.away]].sort((x,y)=>y[1]-x[1]);
-          prediction={expectedGoals:{home:+homeRate.toFixed(2),away:+awayRate.toFixed(2)},oneXTwo:{home:pct(p.home),draw:pct(p.draw),away:pct(p.away)},doubleChance:{ "1X":pct(p.home+p.draw),"X2":pct(p.draw+p.away),"12":pct(p.home+p.away)},over25:pct(p.over),under25:pct(1-p.over),bothTeamsToScore:pct(p.btts),goalNoGoal:{goal:pct(p.btts),noGoal:pct(1-p.btts)},mostLikelyOutcome:outcomes[0][0]};
+          prediction={expectedGoals:{home:+homeRate.toFixed(2),away:+awayRate.toFixed(2)},oneXTwo:{home:pct(p.home),draw:pct(p.draw),away:pct(p.away)},doubleChance:{ "1X":pct(p.home+p.draw),"X2":pct(p.draw+p.away),"12":pct(p.home+p.away)},over25:pct(p.over),under25:pct(1-p.over),bothTeamsToScore:pct(p.btts),goalNoGoal:{goal:pct(p.btts),noGoal:pct(1-p.btts)},mostLikelyOutcome:outcomes[0][0],likelyScore:p.score};
         }
       }
       output.matches.push({id:f.fixture.id,league:league.name,kickoff:f.fixture.date,home:f.teams.home.name,away:f.teams.away.name,status:f.fixture.status.short,prediction,reason:prediction?"Stima Poisson su medie casa/trasferta delle ultime partite disponibili.":"Campione recente insufficiente per una stima affidabile.",playerMarketsAvailable:false});
