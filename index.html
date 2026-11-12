@@ -22,13 +22,13 @@ footer{max-width:1100px;margin:auto;padding:0 20px 28px;color:#71869a;font-size:
 <header><div class="brand"><div class="ball" aria-hidden="true">⚽</div><div><strong>SUPER PRONOSTICI</strong><small>Football intelligence</small></div></div><div class="private">🔒 Solo personale</div></header>
 <main>
 <section class="hero"><div class="eyebrow">La tua centrale calcistica</div><h1>Leggi la partita.<br><span style="color:var(--green)">Analizza i numeri.</span></h1><p>Pronostici e statistiche per i principali campionati europei, con analisi dedicate anche ai singoli giocatori.</p></section>
-<nav aria-label="Sezioni"><button class="active" data-tab="oggi">⚡ Oggi</button><button data-tab="partite">Partite</button><button data-tab="giocatori">Giocatori</button><button data-tab="storico">Storico</button></nav>
+<nav aria-label="Campionati e sezioni"><button class="active" data-tab="oggi">⚡ Oggi</button><button data-tab="tutte">Tutte</button><button data-tab="seriea">🇮🇹 Serie A</button><button data-tab="epl">🏴 Premier</button><button data-tab="laliga">🇪🇸 La Liga</button><button data-tab="bundesliga">🇩🇪 Bundesliga</button><button data-tab="ligue1">🇫🇷 Ligue 1</button><button data-tab="ucl">⭐ Champions</button><button data-tab="uel">🏆 Europa League</button><button data-tab="giocatori">Giocatori</button><button data-tab="storico">Storico</button></nav>
 <section><div class="section-head"><h2 id="sectionTitle">Panoramica</h2><span id="today"></span></div><div class="grid" id="content"><div class="card empty">La base dell'app è pronta. Il prossimo passaggio sarà collegare una fonte dati calcistica per caricare partite, statistiche e rose aggiornate: non mostriamo pronostici inventati.</div></div></section>
 <div class="feature-grid"><div class="feature"><div class="ico">🎯</div><strong>Pronostici partita</strong><p>1X2, doppia chance, Over/Under e Gol/No Gol.</p></div><div class="feature"><div class="ico">🟨</div><strong>Possibili ammoniti</strong><p>Analisi individuale basata su falli, cartellini e minutaggio.</p></div><div class="feature"><div class="ico">🥅</div><strong>Tiri in porta</strong><p>Stime sui giocatori e probabilità di almeno un tiro nello specchio.</p></div></div>
 <div class="disclaimer">Le percentuali saranno stime statistiche, non certezze né garanzie di vincita. L'app è pensata per analisi personali e non raccoglie scommesse o denaro.</div>
 </main><footer>SUPER PRONOSTICI · Versione iniziale · Dati e modelli AI da collegare</footer>
 <script>
-const tabs={oggi:"oggi",partite:"partite",giocatori:"giocatori",storico:"storico"};
+const leagues=[{tab:"seriea",name:"Serie A"},{tab:"epl",name:"Premier League"},{tab:"laliga",name:"La Liga"},{tab:"bundesliga",name:"Bundesliga"},{tab:"ligue1",name:"Ligue 1"},{tab:"ucl",name:"Champions League"},{tab:"uel",name:"Europa League"}];
 let currentTab="oggi", liveData=null;
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const dateFmt=s=>new Intl.DateTimeFormat('it-IT',{dateStyle:'medium',timeStyle:'short'}).format(new Date(s));
@@ -43,10 +43,12 @@ function render(){
  const matches=(liveData?.matches||[]).filter(m=>new Date(m.kickoff)>=new Date());
  if(currentTab==="giocatori"){title.textContent="Analisi giocatori";content.innerHTML='<div class="card empty">Le stime su ammonizioni e tiri in porta saranno attivate solo quando avremo statistiche individuali verificate e minuti/ruoli aggiornati. Nessun nome o probabilità inventati.</div>';return;}
  if(currentTab==="storico"){title.textContent="Storico pronostici";content.innerHTML='<div class="card empty">Lo storico si popolerà con le previsioni salvate e i risultati ufficiali nei successivi aggiornamenti. Nessun risultato viene simulato.</div>';return;}
- title.textContent=currentTab==="oggi"?"Partite in programma":"Partite divise per campionato";
- const list=currentTab==="oggi"?matches.slice(0,8):matches;
- if(!list.length){content.innerHTML='<div class="card empty">Nessuna partita futura trovata nei dati aggiornati. Riprova dopo il prossimo aggiornamento.</div>';return;}
- const order=["Serie A","Premier League","La Liga","Bundesliga","Ligue 1","Champions League","Europa League"];
+ const selected=leagues.find(l=>l.tab===currentTab);
+ title.textContent=selected?selected.name:(currentTab==="oggi"?"Partite in programma":"Tutte le partite");
+ const list=selected?matches.filter(m=>m.league===selected.name):(currentTab==="oggi"?matches.slice(0,8):matches);
+ if(!list.length){content.innerHTML='<div class="card empty">Nessuna partita futura disponibile per questa sezione al momento.</div>';return;}
+ if(selected){content.innerHTML=list.map(matchCard).join("");return;}
+ const order=leagues.map(l=>l.name);
  const groups=order.map(name=>({name,items:list.filter(m=>m.league===name)})).filter(g=>g.items.length);
  content.innerHTML=groups.map(g=>'<div class="league-heading"><strong>'+esc(g.name)+'</strong><span>'+g.items.length+' partite</span></div>'+g.items.map(matchCard).join("")).join("");
 }
