@@ -1,8 +1,16 @@
 {
-  "generatedAt": null,
+  "generatedAt": "2026-11-12T07:49:07.414Z",
+  "season": 2026,
   "provider": "API-Football",
   "leagues": [],
   "matches": [],
-  "warnings": [],
-  "message": "Dati non ancora inizializzati: configura API_FOOTBALL_KEY e avvia il workflow."
+  "warnings": [
+    "Serie A: {\"plan\":\"Free plans do not have access to this season, try from 2022 to 2024.\"}",
+    "Premier League: {\"plan\":\"Free plans do not have access to this season, try from 2022 to 2024.\"}",
+    "La Liga: {\"plan\":\"Free plans do not have access to this season, try from 2022 to 2024.\"}",
+    "Bundesliga: {\"plan\":\"Free plans do not have access to this season, try from 2022 to 2024.\"}",
+    "Ligue 1: {\"plan\":\"Free plans do not have access to this season, try from 2022 to 2024.\"}",
+    "Champions League: {\"plan\":\"Free plans do not have access to this season, try from 2022 to 2024.\"}",
+    "Europa League: {\"plan\":\"Free plans do not have access to this season, try from 2022 to 2024.\"}"
+  ]
 }
