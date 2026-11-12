@@ -9,7 +9,7 @@ on:
   schedule:
     - cron: "15 6 * * *"
 permissions:
-  contents: write
+  contents: read
 jobs:
   refresh:
     runs-on: ubuntu-latest
@@ -22,9 +22,5 @@ jobs:
         run: node scripts/update-data.mjs
         env:
           API_NINJAS_KEY: ${{ secrets.API_NINJAS_KEY }}
-      - name: Publish refreshed data
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/fixtures.json
-          git diff --cached --quiet || (git commit -m "Refresh football fixtures and estimates" && git push)
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
