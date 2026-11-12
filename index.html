@@ -35,6 +35,7 @@ footer{max-width:1100px;margin:auto;padding:0 20px 28px;color:#71869a;font-size:
 <nav aria-label="Campionati e sezioni"><button class="active" data-tab="oggi">⚡ Oggi</button><button data-tab="tutte">Tutte</button><button data-tab="seriea">🇮🇹 Serie A</button><button data-tab="epl">🏴 Premier</button><button data-tab="laliga">🇪🇸 La Liga</button><button data-tab="bundesliga">🇩🇪 Bundesliga</button><button data-tab="ligue1">🇫🇷 Ligue 1</button><button data-tab="ucl">⭐ Champions</button><button data-tab="uel">🏆 Europa League</button><button data-tab="giocatori">Giocatori</button><button data-tab="storico">Storico</button></nav>
 <section><div class="section-head"><h2 id="sectionTitle">Panoramica</h2><span id="today"></span></div><div class="grid" id="content"><div class="card empty">La base dell'app è pronta. Il prossimo passaggio sarà collegare una fonte dati calcistica per caricare partite, statistiche e rose aggiornate: non mostriamo pronostici inventati.</div></div></section>
 <div class="feature-grid"><div class="feature"><div class="ico">🎯</div><strong>Pronostici partita</strong><p>1X2, doppia chance, Over/Under e Gol/No Gol.</p></div><div class="feature"><div class="ico">🟨</div><strong>Possibili ammoniti</strong><p>Analisi individuale basata su falli, cartellini e minutaggio.</p></div><div class="feature"><div class="ico">🥅</div><strong>Tiri in porta</strong><p>Stime sui giocatori e probabilità di almeno un tiro nello specchio.</p></div></div>
+<div id="adminRequestsApp" style="display:none;margin-top:20px;padding:16px;background:#101f30;border:1px solid #23384b;border-radius:14px"></div>
 <div class="disclaimer">Le percentuali saranno stime statistiche, non certezze né garanzie di vincita. L'app è pensata per analisi personali e non raccoglie scommesse o denaro.</div>
 </main><footer id="appFooter" style="display:none">SUPER PRONOSTICI · Versione iniziale · Dati e modelli AI da collegare</footer>
 <script>
@@ -135,7 +136,7 @@ async function showApprovedApp(user){
  loadData();
 }
 async function renderAdminRequests(){
- const panel=document.getElementById('adminRequests');panel.style.display='block';
+ const panel=document.getElementById('adminRequestsApp');panel.style.display='block';
  const {data:users,error}=await authClient.from('profiles').select('user_id,email,approved,created_at').order('created_at',{ascending:false});
  if(error){panel.textContent="Impossibile caricare le richieste: "+error.message;return;}
  const pending=(users||[]).filter(u=>!u.approved);
