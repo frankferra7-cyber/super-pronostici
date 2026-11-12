@@ -13,6 +13,7 @@ main{max-width:1100px;margin:auto;padding:8px 20px 40px}.hero{padding:26px 0 20p
 nav{display:flex;gap:8px;overflow:auto;padding:8px 0 18px}nav button,.filter{white-space:nowrap;background:var(--panel);color:#c6d4e1;border:1px solid var(--line);border-radius:12px;padding:10px 14px;font-weight:650;cursor:pointer}nav button.active{background:var(--green);border-color:var(--green);color:#091421}
 .section-head{display:flex;align-items:end;justify-content:space-between;gap:10px;margin:8px 0 13px}.section-head h2{margin:0;font-size:20px}.section-head span{color:var(--muted);font-size:12px}
 .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.card{background:linear-gradient(155deg,#14283a,#0e1b2a);border:1px solid var(--line);border-radius:18px;padding:17px;min-width:0}.league{color:var(--green2);font-size:11px;font-weight:800;letter-spacing:.09em;text-transform:uppercase}.match{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:15px 0}.team{font-weight:750;font-size:15px}.vs{color:var(--muted);font-size:11px}.time{font-size:12px;color:var(--muted)}.chips{display:flex;gap:7px;flex-wrap:wrap}.chip{background:#1c3448;border:1px solid #2c485c;border-radius:9px;padding:6px 9px;font-size:12px;color:#dce8f2}.chip b{color:var(--green)}.note{font-size:12px;color:var(--muted);margin:12px 0 0}.empty{grid-column:1/-1;text-align:center;padding:30px;color:var(--muted)}.league-heading{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;margin:12px 2px 0;padding:10px 13px;border-left:3px solid var(--green);background:#102235;border-radius:0 10px 10px 0}.league-heading strong{color:var(--green2);font-size:14px;letter-spacing:.04em}.league-heading span{color:var(--muted);font-size:12px}.feature-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:16px}.feature{background:#0d1b2a;border:1px solid var(--line);border-radius:16px;padding:15px}.feature .ico{font-size:22px}.feature strong{display:block;margin:7px 0 3px}.feature p{font-size:12px;color:var(--muted);margin:0}
+.match-tabs{display:flex;gap:6px;overflow-x:auto;margin:14px 0 12px;padding-bottom:2px}.match-tab{flex:1;white-space:nowrap;background:#0b1927;color:#b9c9d8;border:1px solid #2b4256;border-radius:10px;padding:9px 10px;font-size:12px;font-weight:750;cursor:pointer}.match-tab.active{background:var(--green);border-color:var(--green);color:#091421}.match-panel[hidden]{display:none}.match-panel>strong{display:block;color:var(--green2);margin:2px 0 8px}.match-card .match{margin-bottom:10px}
 .disclaimer{margin-top:18px;padding:13px 15px;border:1px solid #344553;border-radius:13px;color:#a9bac9;font-size:12px;background:#0c1926}
 footer{max-width:1100px;margin:auto;padding:0 20px 28px;color:#71869a;font-size:11px}
 
@@ -53,7 +54,9 @@ const pct=n=>Number.isFinite(n)?n+"%":"—";
 function matchCard(m){
  const p=m.prediction;
  const markets=p?'<div class="chips"><span class="chip">1 <b>'+pct(p.oneXTwo.home)+'</b></span><span class="chip">X <b>'+pct(p.oneXTwo.draw)+'</b></span><span class="chip">2 <b>'+pct(p.oneXTwo.away)+'</b></span></div><div class="chips" style="margin-top:7px"><span class="chip">Over 2.5 <b>'+pct(p.over25)+'</b></span><span class="chip">Under 2.5 <b>'+pct(p.under25)+'</b></span><span class="chip">Goal <b>'+pct(p.bothTeamsToScore)+'</b></span></div><div class="note">Doppia chance: 1X '+pct(p.doubleChance["1X"])+' · X2 '+pct(p.doubleChance.X2)+' · 12 '+pct(p.doubleChance["12"])+'</div>':'<div class="note">⚠️ '+esc(m.reason)+'</div>';
- return '<article class="card"><div class="league">'+esc(m.league)+'</div><div class="match"><div class="team">'+esc(m.home)+'</div><div class="vs">VS</div><div class="team" style="text-align:right">'+esc(m.away)+'</div></div><div class="time">'+dateFmt(m.kickoff)+'</div>'+markets+'<div class="note">'+(p?'Stima Poisson · gol attesi '+p.expectedGoals.home+'–'+p.expectedGoals.away+' · esito più probabile '+esc(p.mostLikelyOutcome)+' · risultato indicativo '+esc(p.likelyScore):'Nessuna previsione pubblicata')+'</div><div class="note">Ammoniti e tiri in porta: dati individuali non ancora disponibili per una stima verificata.</div></article>';
+ const matchId=esc(m.id);
+ const playerUnavailable='<div class="note">Le statistiche individuali verificate per questa partita non sono ancora disponibili. Non mostriamo nomi o probabilità inventati.</div>';
+ return '<article class="card match-card" data-match-id="'+matchId+'"><div class="league">'+esc(m.league)+'</div><div class="match"><div class="team">'+esc(m.home)+'</div><div class="vs">VS</div><div class="team" style="text-align:right">'+esc(m.away)+'</div></div><div class="time">'+dateFmt(m.kickoff)+'</div><div class="match-tabs" role="tablist" aria-label="Dettagli partita"><button type="button" class="match-tab active" data-match-tab="partita">Partita</button><button type="button" class="match-tab" data-match-tab="ammoniti">🟨 Ammoniti</button><button type="button" class="match-tab" data-match-tab="tiri">🥅 Tiri in porta</button></div><section class="match-panel" data-match-panel="partita">'+markets+'<div class="note">'+(p?'Stima Poisson · gol attesi '+p.expectedGoals.home+'–'+p.expectedGoals.away+' · esito più probabile '+esc(p.mostLikelyOutcome)+' · risultato indicativo '+esc(p.likelyScore):'Nessuna previsione pubblicata')+'</div></section><section class="match-panel" data-match-panel="ammoniti" hidden><strong>Possibili ammoniti</strong>'+playerUnavailable+'</section><section class="match-panel" data-match-panel="tiri" hidden><strong>Tiri in porta</strong>'+playerUnavailable+'</section></article>';
 }
 function render(){
  const title=document.getElementById('sectionTitle'),content=document.getElementById('content');
@@ -71,6 +74,14 @@ function render(){
 }
 document.getElementById('today').textContent=new Intl.DateTimeFormat('it-IT',{dateStyle:'full'}).format(new Date());
 document.querySelectorAll('nav button').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));b.classList.add('active');currentTab=b.dataset.tab;render();}));
+document.getElementById('content').addEventListener('click',e=>{
+ const tab=e.target.closest('[data-match-tab]');
+ if(!tab)return;
+ const card=tab.closest('.match-card');
+ if(!card)return;
+ card.querySelectorAll('[data-match-tab]').forEach(b=>{const active=b===tab;b.classList.toggle('active',active);b.setAttribute('aria-selected',String(active));});
+ card.querySelectorAll('[data-match-panel]').forEach(panel=>{panel.hidden=panel.dataset.matchPanel!==tab.dataset.matchTab;});
+});
 async function loadData(){
  try{
   const response=await fetch('./data/fixtures.json?refresh='+Date.now(),{cache:'no-store'});
