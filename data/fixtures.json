@@ -1,0 +1,8 @@
+{
+  "generatedAt": null,
+  "provider": "API-Football",
+  "leagues": [],
+  "matches": [],
+  "warnings": [],
+  "message": "Dati non ancora inizializzati: configura API_FOOTBALL_KEY e avvia il workflow."
+}
