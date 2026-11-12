@@ -5,7 +5,6 @@
 <meta name="theme-color" content="#081321"><meta name="description" content="Super Pronostici: analisi calcistiche e stime AI per partite e giocatori.">
 <link rel="manifest" href="./manifest.webmanifest">
 <title>Super Pronostici</title>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root{color-scheme:dark;--bg:#07111f;--panel:#101f30;--panel2:#14283a;--line:#23384b;--muted:#91a4b8;--text:#f3f7fb;--green:#a3ff35;--green2:#d1ff9b}
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 80% -10%,#193c38 0,transparent 38%),var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;min-height:100vh}
@@ -60,8 +59,19 @@ function render(){
 document.getElementById('today').textContent=new Intl.DateTimeFormat('it-IT',{dateStyle:'full'}).format(new Date());
 document.querySelectorAll('nav button').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));b.classList.add('active');currentTab=b.dataset.tab;render();}));
 async function loadData(){
- try{if(!window.supabase?.createClient)throw new Error('Libreria dati non caricata');const supabase=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);const {data,error}=await supabase.from('app_data').select('payload,updated_at').eq('id','fixtures').single();if(error)throw error;liveData=data.payload;if(!liveData?.generatedAt)throw new Error('Dati non ancora pubblicati');render();document.getElementById('today').textContent='Aggiornato: '+dateFmt(liveData.generatedAt);}
- catch(e){render();document.getElementById('today').textContent='Dati non aggiornati';console.error('Errore caricamento dati:',e);}
+ try{
+  const response=await fetch('./data/fixtures.json?refresh='+Date.now(),{cache:'no-store'});
+  if(!response.ok)throw new Error('File dati non disponibile ('+response.status+')');
+  const payload=await response.json();
+  if(!payload||!Array.isArray(payload.matches)||!payload.generatedAt)throw new Error('Formato dati non valido');
+  liveData=payload;render();
+  document.getElementById('today').textContent='Aggiornato: '+dateFmt(liveData.generatedAt);
+ }catch(e){
+  console.error('Errore caricamento partite:',e);
+  render();
+  document.getElementById('today').textContent='Dati non aggiornati';
+  document.getElementById('content').innerHTML='<div class="card empty">Partite in aggiornamento. Riprova tra poco.</div>';
+ }
 }
 loadData();
 </script>
