@@ -1,7 +1,10 @@
 import fs from "node:fs/promises";
 
 const KEY = process.env.API_NINJAS_KEY;
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 if (!KEY) throw new Error("Missing API_NINJAS_KEY secret");
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) throw new Error("Missing Supabase server secrets");
 const BASE = "https://api.api-ninjas.com/v1/soccermatches";
 const LEAGUES = [
   {id:"seriea",name:"Serie A"},{id:"epl",name:"Premier League"},{id:"laliga",name:"La Liga"},
@@ -81,7 +84,16 @@ for (const league of LEAGUES) {
   } catch(e) { output.warnings.push(`${league.name}: ${e.message}`); }
 }
 output.matches.sort((a,b)=>a.kickoff.localeCompare(b.kickoff));
-await fs.mkdir("data",{recursive:true});
-await fs.writeFile("data/fixtures.json",JSON.stringify(output,null,2)+"\n");
-console.log(`Saved ${output.matches.length} future fixtures across ${output.leagues.length} leagues; ${output.warnings.length} warnings`);
+const response = await fetch(`${SUPABASE_URL.replace(/\/$/,"")}/rest/v1/app_data?on_conflict=id`, {
+  method: "POST",
+  headers: {
+    apikey: SUPABASE_SERVICE_ROLE_KEY,
+    Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+    "Content-Type": "application/json",
+    Prefer: "resolution=merge-duplicates,return=minimal"
+  },
+  body: JSON.stringify({id:"fixtures",payload:output,updated_at:now.toISOString()})
+});
+if (!response.ok) throw new Error(`Supabase upload failed ${response.status}: ${(await response.text()).slice(0,500)}`);
+console.log(`Saved ${output.matches.length} future fixtures across ${output.leagues.length} leagues; ${output.warnings.length} warnings to private Supabase storage`);
 if (!output.leagues.length) throw new Error("No competition data could be loaded; refusing to publish an empty successful refresh");
