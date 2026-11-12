@@ -35,7 +35,7 @@ const leagues=[{tab:"seriea",name:"Serie A"},{tab:"epl",name:"Premier League"},{
 let currentTab="oggi", liveData=null;
 const SUPABASE_URL="https://exphhqunlvlyzjvrxdla.supabase.co";
 const SUPABASE_KEY="sb_publishable_ogiqcvuNnOjlqT5ADuqpAg_-KTAEiuz";
-const supabase=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+let supabase=null;
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const dateFmt=s=>new Intl.DateTimeFormat('it-IT',{dateStyle:'medium',timeStyle:'short'}).format(new Date(s));
 const pct=n=>Number.isFinite(n)?n+"%":"—";
@@ -65,10 +65,44 @@ async function loadData(){
  catch(e){document.getElementById('content').innerHTML='<div class="card empty">Dati non ancora disponibili. Riprova più tardi.</div>';console.error(e);}
 }
 async function enterApp(session){document.body.classList.toggle('authenticated',!!session);if(session)await loadData();}
-document.getElementById('loginForm').addEventListener('submit',async e=>{e.preventDefault();const button=document.getElementById('loginButton'),error=document.getElementById('loginError');button.disabled=true;button.textContent='Accesso…';error.textContent='';const username=document.getElementById('username').value.trim();const password=document.getElementById('password').value;const email=username.toLowerCase()==='admin'?'frankferra7@gmail.com':username;const {data,error:authError}=await supabase.auth.signInWithPassword({email,password});button.disabled=false;button.textContent='Accedi';if(authError){error.textContent='Nome utente o password non corretti.';return;}document.getElementById('password').value='';await enterApp(data.session);});
-document.getElementById('logoutBtn').addEventListener('click',async()=>{await supabase.auth.signOut();liveData=null;document.body.classList.remove('authenticated');});
-supabase.auth.getSession().then(({data})=>enterApp(data.session));
-supabase.auth.onAuthStateChange((_event,session)=>{if(!session){document.body.classList.remove('authenticated');liveData=null;}});
+async function initAuth(){
+ const error=document.getElementById('loginError');
+ try{
+  if(!window.supabase?.createClient){
+   await new Promise((resolve,reject)=>{
+    const script=document.createElement('script');
+    script.src='https://unpkg.com/@supabase/supabase-js@2';
+    script.onload=resolve;script.onerror=()=>reject(new Error('Libreria di accesso non caricata'));
+    document.head.appendChild(script);
+   });
+  }
+  if(!window.supabase?.createClient)throw new Error('Libreria Supabase non disponibile');
+  supabase=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+  document.getElementById('loginForm').addEventListener('submit',async e=>{
+   e.preventDefault();
+   const button=document.getElementById('loginButton');
+   button.disabled=true;button.textContent='Accesso…';error.textContent='';
+   try{
+    const username=document.getElementById('username').value.trim();
+    const password=document.getElementById('password').value;
+    const email=username.toLowerCase()==='admin'?'frankferra7@gmail.com':username;
+    const {data,error:authError}=await supabase.auth.signInWithPassword({email,password});
+    if(authError)throw authError;
+    document.getElementById('password').value='';
+    await enterApp(data.session);
+   }catch(e){console.error('Login error:',e);error.textContent=e.message||'Errore durante l’accesso.';}
+   finally{button.disabled=false;button.textContent='Accedi';}
+  });
+  document.getElementById('logoutBtn').addEventListener('click',async()=>{
+   await supabase.auth.signOut();liveData=null;document.body.classList.remove('authenticated');
+  });
+  const {data}=await supabase.auth.getSession();await enterApp(data.session);
+  supabase.auth.onAuthStateChange((_event,session)=>{
+   if(!session){document.body.classList.remove('authenticated');liveData=null;}
+  });
+ }catch(e){console.error('Supabase initialization error:',e);error.textContent='Impossibile caricare il servizio di accesso. Ricarica la pagina o prova più tardi.';}
+}
+initAuth();
 
 if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
 </script>
