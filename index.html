@@ -16,13 +16,12 @@ nav{display:flex;gap:8px;overflow:auto;padding:8px 0 18px}nav button,.filter{whi
 .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.card{background:linear-gradient(155deg,#14283a,#0e1b2a);border:1px solid var(--line);border-radius:18px;padding:17px;min-width:0}.league{color:var(--green2);font-size:11px;font-weight:800;letter-spacing:.09em;text-transform:uppercase}.match{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:15px 0}.team{font-weight:750;font-size:15px}.vs{color:var(--muted);font-size:11px}.time{font-size:12px;color:var(--muted)}.chips{display:flex;gap:7px;flex-wrap:wrap}.chip{background:#1c3448;border:1px solid #2c485c;border-radius:9px;padding:6px 9px;font-size:12px;color:#dce8f2}.chip b{color:var(--green)}.note{font-size:12px;color:var(--muted);margin:12px 0 0}.empty{grid-column:1/-1;text-align:center;padding:30px;color:var(--muted)}.league-heading{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;margin:12px 2px 0;padding:10px 13px;border-left:3px solid var(--green);background:#102235;border-radius:0 10px 10px 0}.league-heading strong{color:var(--green2);font-size:14px;letter-spacing:.04em}.league-heading span{color:var(--muted);font-size:12px}.feature-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:16px}.feature{background:#0d1b2a;border:1px solid var(--line);border-radius:16px;padding:15px}.feature .ico{font-size:22px}.feature strong{display:block;margin:7px 0 3px}.feature p{font-size:12px;color:var(--muted);margin:0}
 .disclaimer{margin-top:18px;padding:13px 15px;border:1px solid #344553;border-radius:13px;color:#a9bac9;font-size:12px;background:#0c1926}
 footer{max-width:1100px;margin:auto;padding:0 20px 28px;color:#71869a;font-size:11px}
-#loginPanel{max-width:420px;margin:12vh auto;padding:28px 22px;background:linear-gradient(155deg,#14283a,#0e1b2a);border:1px solid var(--line);border-radius:20px;box-shadow:0 18px 55px #0005}#loginPanel h1{font-size:25px;margin:0 0 8px}#loginPanel p{color:var(--muted);margin:0 0 20px}#loginPanel label{display:block;font-size:13px;color:#c6d4e1;margin:13px 0 6px}#loginPanel input{width:100%;padding:13px;border-radius:10px;border:1px solid var(--line);background:#07111f;color:var(--text);font:inherit}#loginPanel button,#logoutBtn{background:var(--green);border:0;border-radius:10px;color:#091421;font-weight:800;padding:12px 16px;cursor:pointer}#loginPanel button{width:100%;margin-top:18px}#loginError{color:#ff9d9d;min-height:20px;font-size:13px;margin-top:10px}body:not(.authenticated)>header,body:not(.authenticated)>main,body:not(.authenticated)>footer{display:none}body.authenticated #loginPanel{display:none}#logoutBtn{padding:8px 12px;font-size:12px}
+
 @media(max-width:650px){header{padding-top:16px}.grid{grid-template-columns:1fr}.feature-grid{grid-template-columns:1fr}.hero{padding-top:18px}.private{font-size:10px}}
 </style>
 </head>
 <body>
-<section id="loginPanel" aria-labelledby="loginTitle"><div class="brand" style="margin-bottom:20px"><div class="ball" aria-hidden="true">⚽</div><div><strong>SUPER PRONOSTICI</strong><small>Accesso privato</small></div></div><h1 id="loginTitle">Bentornato</h1><p>Accedi per visualizzare partite e analisi.</p><form id="loginForm"><label for="username">Nome utente</label><input id="username" name="username" autocomplete="username" required value="admin"><label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" required><button type="submit" id="loginButton">Accedi</button><div id="loginError" role="alert"></div></form></section>
-<header><div class="brand"><div class="ball" aria-hidden="true">⚽</div><div><strong>SUPER PRONOSTICI</strong><small>Football intelligence</small></div></div><div style="display:flex;align-items:center;gap:10px"><div class="private">🔒 Solo personale</div><button id="logoutBtn" type="button">Esci</button></div></header>
+<header><div class="brand"><div class="ball" aria-hidden="true">⚽</div><div><strong>SUPER PRONOSTICI</strong><small>Football intelligence</small></div></div><div style="display:flex;align-items:center;gap:10px"><div class="private">🌐 Accesso pubblico</div></div></header>
 <main>
 <section class="hero"><div class="eyebrow">La tua centrale calcistica</div><h1>Leggi la partita.<br><span style="color:var(--green)">Analizza i numeri.</span></h1><p>Pronostici e statistiche per i principali campionati europei, con analisi dedicate anche ai singoli giocatori.</p></section>
 <nav aria-label="Campionati e sezioni"><button class="active" data-tab="oggi">⚡ Oggi</button><button data-tab="tutte">Tutte</button><button data-tab="seriea">🇮🇹 Serie A</button><button data-tab="epl">🏴 Premier</button><button data-tab="laliga">🇪🇸 La Liga</button><button data-tab="bundesliga">🇩🇪 Bundesliga</button><button data-tab="ligue1">🇫🇷 Ligue 1</button><button data-tab="ucl">⭐ Champions</button><button data-tab="uel">🏆 Europa League</button><button data-tab="giocatori">Giocatori</button><button data-tab="storico">Storico</button></nav>
@@ -64,46 +63,6 @@ async function loadData(){
  try{const {data,error}=await supabase.from('app_data').select('payload,updated_at').eq('id','fixtures').single();if(error)throw error;liveData=data.payload;if(!liveData?.generatedAt)throw new Error('Dati non ancora pubblicati');render();document.getElementById('today').textContent='Aggiornato: '+dateFmt(liveData.generatedAt);}
  catch(e){document.getElementById('content').innerHTML='<div class="card empty">Dati non ancora disponibili. Riprova più tardi.</div>';console.error(e);}
 }
-async function enterApp(session){document.body.classList.toggle('authenticated',!!session);if(session)await loadData();}
-async function initAuth(){
- const error=document.getElementById('loginError');
- try{
-  if(!window.supabase?.createClient){
-   await new Promise((resolve,reject)=>{
-    const script=document.createElement('script');
-    script.src='https://unpkg.com/@supabase/supabase-js@2';
-    script.onload=resolve;script.onerror=()=>reject(new Error('Libreria di accesso non caricata'));
-    document.head.appendChild(script);
-   });
-  }
-  if(!window.supabase?.createClient)throw new Error('Libreria Supabase non disponibile');
-  supabase=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
-  document.getElementById('loginForm').addEventListener('submit',async e=>{
-   e.preventDefault();
-   const button=document.getElementById('loginButton');
-   button.disabled=true;button.textContent='Accesso…';error.textContent='';
-   try{
-    const username=document.getElementById('username').value.trim();
-    const password=document.getElementById('password').value;
-    const email=username.toLowerCase()==='admin'?'frankferra7@gmail.com':username;
-    const {data,error:authError}=await supabase.auth.signInWithPassword({email,password});
-    if(authError)throw authError;
-    document.getElementById('password').value='';
-    await enterApp(data.session);
-   }catch(e){console.error('Login error:',e);error.textContent=e.message||'Errore durante l’accesso.';}
-   finally{button.disabled=false;button.textContent='Accedi';}
-  });
-  document.getElementById('logoutBtn').addEventListener('click',async()=>{
-   await supabase.auth.signOut();liveData=null;document.body.classList.remove('authenticated');
-  });
-  const {data}=await supabase.auth.getSession();await enterApp(data.session);
-  supabase.auth.onAuthStateChange((_event,session)=>{
-   if(!session){document.body.classList.remove('authenticated');liveData=null;}
-  });
- }catch(e){console.error('Supabase initialization error:',e);error.textContent='Impossibile caricare il servizio di accesso. Ricarica la pagina o prova più tardi.';}
-}
-initAuth();
-
-if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+loadData();
 </script>
 </body></html>
