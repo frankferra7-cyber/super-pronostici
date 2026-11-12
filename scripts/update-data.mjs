@@ -1,10 +1,7 @@
 import fs from "node:fs/promises";
 
 const KEY = process.env.API_NINJAS_KEY;
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
 if (!KEY) throw new Error("Missing API_NINJAS_KEY secret");
-if (!SUPABASE_URL || !SUPABASE_SECRET_KEY) throw new Error("Missing Supabase server secrets");
 const BASE = "https://api.api-ninjas.com/v1/soccermatches";
 const LEAGUES = [
   {id:"seriea",name:"Serie A"},{id:"epl",name:"Premier League"},{id:"laliga",name:"La Liga"},
@@ -78,12 +75,34 @@ for (const league of LEAGUES) {
           prediction={expectedGoals:{home:+homeRate.toFixed(2),away:+awayRate.toFixed(2)},oneXTwo:{home:pct(p.home),draw:pct(p.draw),away:pct(p.away)},doubleChance:{"1X":pct(p.home+p.draw),"X2":pct(p.draw+p.away),"12":pct(p.home+p.away)},over25:pct(p.over),under25:pct(1-p.over),bothTeamsToScore:pct(p.btts),goalNoGoal:{goal:pct(p.btts),noGoal:pct(1-p.btts)},mostLikelyOutcome:outcomes[0][0],likelyScore:p.score};
         }
       }
-      output.matches.push({id:f.game_id||`${league.id}-${f._kickoff}-${home}-${away}`,league:league.name,kickoff:f._kickoff,home,away,status:f.status,prediction,reason:prediction?"Stima Poisson su medie casa/trasferta delle ultime partite disponibili.":"Campione recente insufficiente per una stima affidabile.",playerMarketsAvailable:false});
+      output.matches.push({id:f.game_id||`${league.id}-${f._kickoff}-${home}-${away}`,league:league.name,round:f.round||null,kickoff:f._kickoff,home,away,status:f.status,prediction,reason:prediction?"Stima Poisson su medie casa/trasferta delle ultime partite disponibili.":"Campione recente insufficiente per una stima affidabile.",playerMarketsAvailable:false});
     }
     if(!normalized.length) output.warnings.push(`${league.name}: nessuna partita restituita per la stagione ${season}`);
   } catch(e) { output.warnings.push(`${league.name}: ${e.message}`); }
 }
 output.matches.sort((a,b)=>a.kickoff.localeCompare(b.kickoff));
+// Publish only the next matchday for each competition, not the entire season calendar.
+// League fixtures have no round label, so group the first run of fixtures separated by
+// no more than four days. Cup competitions can use the provider's explicit round label.
+const nextMatchdays=[];
+for (const league of LEAGUES) {
+  const fixtures=output.matches.filter(m=>m.league===league.name);
+  if (!fixtures.length) continue;
+  const first=fixtures[0];
+  if (first.round) {
+    nextMatchdays.push(...fixtures.filter(m=>m.round===first.round));
+  } else {
+    let previous=Date.parse(first.kickoff);
+    nextMatchdays.push(first);
+    for (const fixture of fixtures.slice(1)) {
+      const current=Date.parse(fixture.kickoff);
+      if ((current-previous)>4*24*60*60*1000) break;
+      nextMatchdays.push(fixture);
+      previous=current;
+    }
+  }
+}
+output.matches=nextMatchdays.sort((a,b)=>a.kickoff.localeCompare(b.kickoff));
 if (!output.leagues.length) throw new Error("No competition data could be loaded; refusing to publish an empty refresh");
 await fs.mkdir("data",{recursive:true});
 await fs.writeFile("data/fixtures.json",JSON.stringify(output,null,2)+"\n");
