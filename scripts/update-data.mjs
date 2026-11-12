@@ -54,7 +54,7 @@ for(const league of LEAGUES){
       }
     }
     output.leagues.push({id:league.id,name:league.name,finished:finished.length,upcoming:upcoming.length});
-    for(const f of upcoming){
+    for(const f of upcoming.filter(x=>new Date(x.fixture.date)>now && ["NS","TBD"].includes(x.fixture.status.short))){
       const h=form.get(f.teams.home.id),a=form.get(f.teams.away.id);
       const enough=h&&a&&h.homeFor.length>=3&&a.awayFor.length>=3;
       let prediction=null;
