@@ -1,77 +1,87 @@
 import fs from "node:fs/promises";
 
-const KEY = process.env.API_FOOTBALL_KEY;
-if (!KEY) throw new Error("Missing API_FOOTBALL_KEY secret");
-const BASE = "https://v3.football.api-sports.io";
+const KEY = process.env.API_NINJAS_KEY;
+if (!KEY) throw new Error("Missing API_NINJAS_KEY secret");
+const BASE = "https://api.api-ninjas.com/v1/soccermatches";
 const LEAGUES = [
-  {id:135,name:"Serie A"},{id:39,name:"Premier League"},{id:140,name:"La Liga"},
-  {id:78,name:"Bundesliga"},{id:61,name:"Ligue 1"},{id:2,name:"Champions League"},{id:3,name:"Europa League"}
+  {id:"seriea",name:"Serie A"},{id:"epl",name:"Premier League"},{id:"laliga",name:"La Liga"},
+  {id:"bundesliga",name:"Bundesliga"},{id:"ligue1",name:"Ligue 1"},{id:"ucl",name:"Champions League"},{id:"uel",name:"Europa League"}
 ];
-const season = new Date().getUTCMonth() >= 6 ? new Date().getUTCFullYear() : new Date().getUTCFullYear()-1;
-const date = d => d.toISOString().slice(0,10);
 const now = new Date();
-const from = new Date(now); from.setUTCDate(from.getUTCDate()-75);
-const to = new Date(now); to.setUTCDate(to.getUTCDate()+10);
+const season = now.getUTCMonth() >= 6 ? now.getUTCFullYear() : now.getUTCFullYear()-1;
+const cutoff = new Date(now); cutoff.setUTCDate(cutoff.getUTCDate()-75);
 const cache = new Map();
 
-async function api(path) {
-  if (cache.has(path)) return cache.get(path);
-  const res = await fetch(BASE+path,{headers:{"x-apisports-key":KEY}});
-  if (!res.ok) throw new Error(`API error ${res.status}: ${path}`);
-  const json = await res.json();
-  if (json.errors && Object.keys(json.errors).length) throw new Error(JSON.stringify(json.errors));
-  const data=json.response||[];
-  cache.set(path,data);
+async function api(league, offset) {
+  const url = `${BASE}?league=${encodeURIComponent(league)}&season=${season}&offset=${offset}`;
+  if (cache.has(url)) return cache.get(url);
+  const res = await fetch(url,{headers:{"X-Api-Key":KEY}});
+  const body = await res.text();
+  if (!res.ok) throw new Error(`API Ninjas ${res.status}: ${body.slice(0,300)}`);
+  let data;
+  try { data=JSON.parse(body); } catch { throw new Error("Risposta API non valida"); }
+  if (!Array.isArray(data)) throw new Error(JSON.stringify(data).slice(0,300));
+  cache.set(url,data);
   return data;
 }
 const avg = xs => xs.length ? xs.reduce((a,b)=>a+b,0)/xs.length : null;
-function poisson(l,k){let p=Math.exp(-l),v=p;for(let i=1;i<=k;i++){p*=l/i;v+=p;}return v;}
+function factorial(n){let x=1;for(let i=2;i<=n;i++)x*=i;return x;}
 function probs(h,a){
   let home=0,draw=0,away=0,over=0,btts=0,best=0,score="0-0";
   for(let i=0;i<=8;i++)for(let j=0;j<=8;j++){
     const p=Math.exp(-h)*h**i/factorial(i)*Math.exp(-a)*a**j/factorial(j);
-    if(i>j)home+=p;else if(i===j)draw+=p;else away+=p;if(p>best){best=p;score=i+"-"+j;}
+    if(i>j)home+=p;else if(i===j)draw+=p;else away+=p;
     if(i+j>=3)over+=p;if(i>0&&j>0)btts+=p;
+    if(p>best){best=p;score=i+"-"+j;}
   }
   return {home,draw,away,over,btts,score};
 }
-function factorial(n){let x=1;for(let i=2;i<=n;i++)x*=i;return x;}
 const pct=x=>Math.round(x*100);
-const output={generatedAt:now.toISOString(),season,provider:"API-Football",leagues:[],matches:[],warnings:[]};
+const kickoffOf = f => f.start_time || (f.date ? new Date(f.date+"T12:00:00Z").toISOString() : null);
+const teamName = t => typeof t === "string" ? t : (t?.name || t?.abbreviation || "");
+const output={generatedAt:now.toISOString(),season,provider:"API Ninjas",leagues:[],matches:[],warnings:[]};
 
-for(const league of LEAGUES){
-  try{
-    const [recent,upcoming]=await Promise.all([
-      api(`/fixtures?league=${league.id}&season=${season}&from=${date(from)}&to=${date(now)}`),
-      api(`/fixtures?league=${league.id}&season=${season}&from=${date(now)}&to=${date(to)}`)
-    ]);
-    const finished=recent.filter(f=>["FT","AET","PEN"].includes(f.fixture.status.short)&&Number.isFinite(f.goals.home)&&Number.isFinite(f.goals.away));
-    const form=new Map();
-    for(const f of finished){
-      for(const [id,venue,gf,ga] of [[f.teams.home.id,"home",f.goals.home,f.goals.away],[f.teams.away.id,"away",f.goals.away,f.goals.home]]){
-        if(!form.has(id))form.set(id,{homeFor:[],homeAgainst:[],awayFor:[],awayAgainst:[]});
-        const t=form.get(id);t[venue+"For"].push(gf);t[venue+"Against"].push(ga);
-      }
+for (const league of LEAGUES) {
+  try {
+    const all=[];
+    // API Ninjas returns 50 matches per page on the free tier; walk the season.
+    for (let offset=0, page=0; page<12; offset+=50,page++) {
+      const batch=await api(league.id,offset);
+      all.push(...batch);
+      if (batch.length<50) break;
     }
-    output.leagues.push({id:league.id,name:league.name,finished:finished.length,upcoming:upcoming.length});
-    for(const f of upcoming.filter(x=>new Date(x.fixture.date)>now && ["NS","TBD"].includes(x.fixture.status.short))){
-      const h=form.get(f.teams.home.id),a=form.get(f.teams.away.id);
-      const enough=h&&a&&h.homeFor.length>=3&&a.awayFor.length>=3;
+    const normalized=all.map(f=>({...f,_kickoff:kickoffOf(f)})).filter(f=>f._kickoff);
+    const finished=normalized.filter(f=>f.status==="final" && Number.isFinite(Number(f.home_score)) && Number.isFinite(Number(f.away_score)) && new Date(f._kickoff)>=cutoff && new Date(f._kickoff)<now);
+    const form=new Map();
+    for (const f of finished) {
+      const home=teamName(f.home_team), away=teamName(f.away_team);
+      if(!form.has(home))form.set(home,{homeFor:[],homeAgainst:[],awayFor:[],awayAgainst:[]});
+      if(!form.has(away))form.set(away,{homeFor:[],homeAgainst:[],awayFor:[],awayAgainst:[]});
+      const h=form.get(home),a=form.get(away),hg=Number(f.home_score),ag=Number(f.away_score);
+      h.homeFor.push(hg);h.homeAgainst.push(ag);a.awayFor.push(ag);a.awayAgainst.push(hg);
+    }
+    const upcoming=normalized.filter(f=>f.status==="scheduled" && new Date(f._kickoff)>now);
+    output.leagues.push({id:league.id,name:league.name,seasonMatches:normalized.length,finished:finished.length,upcoming:upcoming.length});
+    for (const f of upcoming) {
+      const home=teamName(f.home_team),away=teamName(f.away_team),h=form.get(home),a=form.get(away);
       let prediction=null;
+      const enough=h&&a&&h.homeFor.length>=3&&a.awayFor.length>=3;
       if(enough){
         const homeRate=(avg(h.homeFor)+avg(a.awayAgainst))/2;
         const awayRate=(avg(a.awayFor)+avg(h.homeAgainst))/2;
         if(homeRate>0&&awayRate>0){
           const p=probs(homeRate,awayRate);
           const outcomes=[["1",p.home],["X",p.draw],["2",p.away]].sort((x,y)=>y[1]-x[1]);
-          prediction={expectedGoals:{home:+homeRate.toFixed(2),away:+awayRate.toFixed(2)},oneXTwo:{home:pct(p.home),draw:pct(p.draw),away:pct(p.away)},doubleChance:{ "1X":pct(p.home+p.draw),"X2":pct(p.draw+p.away),"12":pct(p.home+p.away)},over25:pct(p.over),under25:pct(1-p.over),bothTeamsToScore:pct(p.btts),goalNoGoal:{goal:pct(p.btts),noGoal:pct(1-p.btts)},mostLikelyOutcome:outcomes[0][0],likelyScore:p.score};
+          prediction={expectedGoals:{home:+homeRate.toFixed(2),away:+awayRate.toFixed(2)},oneXTwo:{home:pct(p.home),draw:pct(p.draw),away:pct(p.away)},doubleChance:{"1X":pct(p.home+p.draw),"X2":pct(p.draw+p.away),"12":pct(p.home+p.away)},over25:pct(p.over),under25:pct(1-p.over),bothTeamsToScore:pct(p.btts),goalNoGoal:{goal:pct(p.btts),noGoal:pct(1-p.btts)},mostLikelyOutcome:outcomes[0][0],likelyScore:p.score};
         }
       }
-      output.matches.push({id:f.fixture.id,league:league.name,kickoff:f.fixture.date,home:f.teams.home.name,away:f.teams.away.name,status:f.fixture.status.short,prediction,reason:prediction?"Stima Poisson su medie casa/trasferta delle ultime partite disponibili.":"Campione recente insufficiente per una stima affidabile.",playerMarketsAvailable:false});
+      output.matches.push({id:f.game_id||`${league.id}-${f._kickoff}-${home}-${away}`,league:league.name,kickoff:f._kickoff,home,away,status:f.status,prediction,reason:prediction?"Stima Poisson su medie casa/trasferta delle ultime partite disponibili.":"Campione recente insufficiente per una stima affidabile.",playerMarketsAvailable:false});
     }
-  }catch(e){output.warnings.push(`${league.name}: ${e.message}`);}
+    if(!normalized.length) output.warnings.push(`${league.name}: nessuna partita restituita per la stagione ${season}`);
+  } catch(e) { output.warnings.push(`${league.name}: ${e.message}`); }
 }
 output.matches.sort((a,b)=>a.kickoff.localeCompare(b.kickoff));
 await fs.mkdir("data",{recursive:true});
 await fs.writeFile("data/fixtures.json",JSON.stringify(output,null,2)+"\n");
-console.log(`Saved ${output.matches.length} fixtures; ${output.warnings.length} league warnings`);
+console.log(`Saved ${output.matches.length} future fixtures across ${output.leagues.length} leagues; ${output.warnings.length} warnings`);
+if (!output.leagues.length) throw new Error("No competition data could be loaded; refusing to publish an empty successful refresh");
