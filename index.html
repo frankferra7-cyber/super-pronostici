@@ -34,7 +34,7 @@ const leagues=[{tab:"seriea",name:"Serie A"},{tab:"epl",name:"Premier League"},{
 let currentTab="oggi", liveData=null;
 const SUPABASE_URL="https://exphhqunlvlyzjvrxdla.supabase.co";
 const SUPABASE_KEY="sb_publishable_ogiqcvuNnOjlqT5ADuqpAg_-KTAEiuz";
-const supabase=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const dateFmt=s=>new Intl.DateTimeFormat('it-IT',{dateStyle:'medium',timeStyle:'short'}).format(new Date(s));
 const pct=n=>Number.isFinite(n)?n+"%":"—";
@@ -60,8 +60,8 @@ function render(){
 document.getElementById('today').textContent=new Intl.DateTimeFormat('it-IT',{dateStyle:'full'}).format(new Date());
 document.querySelectorAll('nav button').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));b.classList.add('active');currentTab=b.dataset.tab;render();}));
 async function loadData(){
- try{const {data,error}=await supabase.from('app_data').select('payload,updated_at').eq('id','fixtures').single();if(error)throw error;liveData=data.payload;if(!liveData?.generatedAt)throw new Error('Dati non ancora pubblicati');render();document.getElementById('today').textContent='Aggiornato: '+dateFmt(liveData.generatedAt);}
- catch(e){document.getElementById('content').innerHTML='<div class="card empty">Dati non ancora disponibili. Riprova più tardi.</div>';console.error(e);}
+ try{if(!window.supabase?.createClient)throw new Error('Libreria dati non caricata');const supabase=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);const {data,error}=await supabase.from('app_data').select('payload,updated_at').eq('id','fixtures').single();if(error)throw error;liveData=data.payload;if(!liveData?.generatedAt)throw new Error('Dati non ancora pubblicati');render();document.getElementById('today').textContent='Aggiornato: '+dateFmt(liveData.generatedAt);}
+ catch(e){render();document.getElementById('today').textContent='Dati non aggiornati';console.error('Errore caricamento dati:',e);}
 }
 loadData();
 </script>
