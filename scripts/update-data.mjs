@@ -2,9 +2,9 @@ import fs from "node:fs/promises";
 
 const KEY = process.env.API_NINJAS_KEY;
 const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
 if (!KEY) throw new Error("Missing API_NINJAS_KEY secret");
-if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) throw new Error("Missing Supabase server secrets");
+if (!SUPABASE_URL || !SUPABASE_SECRET_KEY) throw new Error("Missing Supabase server secrets");
 const BASE = "https://api.api-ninjas.com/v1/soccermatches";
 const LEAGUES = [
   {id:"seriea",name:"Serie A"},{id:"epl",name:"Premier League"},{id:"laliga",name:"La Liga"},
@@ -87,8 +87,7 @@ output.matches.sort((a,b)=>a.kickoff.localeCompare(b.kickoff));
 const response = await fetch(`${SUPABASE_URL.replace(/\/$/,"")}/rest/v1/app_data?on_conflict=id`, {
   method: "POST",
   headers: {
-    apikey: SUPABASE_SERVICE_ROLE_KEY,
-    Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+    apikey: SUPABASE_SECRET_KEY,
     "Content-Type": "application/json",
     Prefer: "resolution=merge-duplicates,return=minimal"
   },
