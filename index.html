@@ -18,21 +18,33 @@ footer{max-width:1100px;margin:auto;padding:0 20px 28px;color:#71869a;font-size:
 
 @media(max-width:650px){header{padding-top:16px}.grid{grid-template-columns:1fr}.feature-grid{grid-template-columns:1fr}.hero{padding-top:18px}.private{font-size:10px}}
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
-<header><div class="brand"><div class="ball" aria-hidden="true">⚽</div><div><strong>SUPER PRONOSTICI</strong><small>Football intelligence</small></div></div><div style="display:flex;align-items:center;gap:10px"><div class="private">🌐 Accesso pubblico</div></div></header>
-<main>
+<section id="authGate" style="max-width:460px;margin:8vh auto;padding:26px;background:#101f30;border:1px solid #23384b;border-radius:18px;color:#f3f7fb">
+ <div style="font-size:26px">⚽ <b>SUPER PRONOSTICI</b></div><h2 id="authTitle">Accedi o richiedi un account</h2>
+ <p id="authMessage" style="color:#91a4b8">Registrati con la tua email. L’accesso sarà attivato dopo l’approvazione dell’amministratore.</p>
+ <form id="authForm" style="display:grid;gap:10px"><input id="authEmail" type="email" required placeholder="Email" autocomplete="email" style="padding:13px;border-radius:10px;border:1px solid #385168;background:#07111f;color:white"><input id="authPassword" type="password" required minlength="8" placeholder="Password (almeno 8 caratteri)" autocomplete="current-password" style="padding:13px;border-radius:10px;border:1px solid #385168;background:#07111f;color:white"><button type="submit" id="authSubmit" style="padding:13px;border:0;border-radius:10px;background:#a3ff35;color:#081321;font-weight:800">Accedi</button></form>
+ <div style="display:flex;gap:10px;margin-top:12px"><button id="showLogin" type="button" style="flex:1;padding:10px;border-radius:9px">Accedi</button><button id="showSignup" type="button" style="flex:1;padding:10px;border-radius:9px">Richiedi registrazione</button></div>
+ <button id="authLogout" type="button" style="display:none;margin-top:12px;padding:10px">Esci</button>
+ <div id="adminRequests" style="display:none;margin-top:18px"></div>
+</section>
+<header id="appHeader" style="display:none"><div class="brand"><div class="ball" aria-hidden="true">⚽</div><div><strong>SUPER PRONOSTICI</strong><small>Football intelligence</small></div></div><div style="display:flex;align-items:center;gap:10px"><div class="private" id="accountLabel">Area riservata</div><button id="appLogout" type="button" style="padding:7px 11px;border-radius:99px;background:#14283a;color:#dce8f2;border:1px solid #315044">Esci</button></div></header>
+<main id="appMain" style="display:none">
 <section class="hero"><div class="eyebrow">La tua centrale calcistica</div><h1>Leggi la partita.<br><span style="color:var(--green)">Analizza i numeri.</span></h1><p>Pronostici e statistiche per i principali campionati europei, con analisi dedicate anche ai singoli giocatori.</p></section>
 <nav aria-label="Campionati e sezioni"><button class="active" data-tab="oggi">⚡ Oggi</button><button data-tab="tutte">Tutte</button><button data-tab="seriea">🇮🇹 Serie A</button><button data-tab="epl">🏴 Premier</button><button data-tab="laliga">🇪🇸 La Liga</button><button data-tab="bundesliga">🇩🇪 Bundesliga</button><button data-tab="ligue1">🇫🇷 Ligue 1</button><button data-tab="ucl">⭐ Champions</button><button data-tab="uel">🏆 Europa League</button><button data-tab="giocatori">Giocatori</button><button data-tab="storico">Storico</button></nav>
 <section><div class="section-head"><h2 id="sectionTitle">Panoramica</h2><span id="today"></span></div><div class="grid" id="content"><div class="card empty">La base dell'app è pronta. Il prossimo passaggio sarà collegare una fonte dati calcistica per caricare partite, statistiche e rose aggiornate: non mostriamo pronostici inventati.</div></div></section>
 <div class="feature-grid"><div class="feature"><div class="ico">🎯</div><strong>Pronostici partita</strong><p>1X2, doppia chance, Over/Under e Gol/No Gol.</p></div><div class="feature"><div class="ico">🟨</div><strong>Possibili ammoniti</strong><p>Analisi individuale basata su falli, cartellini e minutaggio.</p></div><div class="feature"><div class="ico">🥅</div><strong>Tiri in porta</strong><p>Stime sui giocatori e probabilità di almeno un tiro nello specchio.</p></div></div>
 <div class="disclaimer">Le percentuali saranno stime statistiche, non certezze né garanzie di vincita. L'app è pensata per analisi personali e non raccoglie scommesse o denaro.</div>
-</main><footer>SUPER PRONOSTICI · Versione iniziale · Dati e modelli AI da collegare</footer>
+</main><footer id="appFooter" style="display:none">SUPER PRONOSTICI · Versione iniziale · Dati e modelli AI da collegare</footer>
 <script>
 const leagues=[{tab:"seriea",name:"Serie A"},{tab:"epl",name:"Premier League"},{tab:"laliga",name:"La Liga"},{tab:"bundesliga",name:"Bundesliga"},{tab:"ligue1",name:"Ligue 1"},{tab:"ucl",name:"Champions League"},{tab:"uel",name:"Europa League"}];
 let currentTab="oggi", liveData=null;
 const SUPABASE_URL="https://exphhqunlvlyzjvrxdla.supabase.co";
 const SUPABASE_KEY="sb_publishable_ogiqcvuNnOjlqT5ADuqpAg_-KTAEiuz";
+const ADMIN_EMAIL="frankferra7@gmail.com";
+const authClient=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+let authMode="login";
 
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const dateFmt=s=>new Intl.DateTimeFormat('it-IT',{dateStyle:'medium',timeStyle:'short'}).format(new Date(s));
@@ -73,6 +85,72 @@ async function loadData(){
   document.getElementById('content').innerHTML='<div class="card empty">Partite in aggiornamento. Riprova tra poco.</div>';
  }
 }
-loadData();
+
+async function signOut(){await authClient.auth.signOut();}
+document.getElementById('appLogout').addEventListener('click',signOut);
+document.getElementById('authLogout').addEventListener('click',signOut);
+function setAuthMode(mode){
+ authMode=mode;
+ document.getElementById('authTitle').textContent=mode==="login"?"Accedi a Super Pronostici":"Richiedi un account";
+ document.getElementById('authSubmit').textContent=mode==="login"?"Accedi":"Invia richiesta";
+ document.getElementById('authPassword').autocomplete=mode==="login"?"current-password":"new-password";
+ document.getElementById('authMessage').textContent=mode==="login"?"Inserisci le tue credenziali.":"La registrazione verrà sottoposta all’approvazione dell’amministratore.";
+}
+document.getElementById('showLogin').addEventListener('click',()=>setAuthMode("login"));
+document.getElementById('showSignup').addEventListener('click',()=>setAuthMode("signup"));
+document.getElementById('authForm').addEventListener('submit',async e=>{
+ e.preventDefault();
+ const email=document.getElementById('authEmail').value.trim().toLowerCase();
+ const password=document.getElementById('authPassword').value;
+ const status=document.getElementById('authMessage');
+ const btn=document.getElementById('authSubmit');btn.disabled=true;
+ try{
+  if(authMode==="signup"){
+   const {data,error}=await authClient.auth.signUp({email,password});
+   if(error)throw error;
+   status.textContent=data.session?"Richiesta inviata. Attendi l’approvazione.":"Controlla la tua email per confermare l’indirizzo. Dopo la conferma, attendi l’approvazione.";
+  }else{
+   const {error}=await authClient.auth.signInWithPassword({email,password});
+   if(error)throw error;
+  }
+ }catch(err){status.textContent=err.message||"Operazione non riuscita.";}
+ finally{btn.disabled=false;}
+});
+async function showApprovedApp(user){
+ const gate=document.getElementById('authGate');
+ const admin=user.email?.toLowerCase()===ADMIN_EMAIL;
+ const {data:profile,error}=await authClient.from('profiles').select('approved').eq('user_id',user.id).maybeSingle();
+ if(error){document.getElementById('authTitle').textContent="Configurazione da completare";document.getElementById('authMessage').textContent="Il sistema autorizzazioni non è ancora configurato nel database. Contatta l’amministratore.";document.getElementById('authLogout').style.display='block';return;}
+ if(!admin&&!profile?.approved){
+  document.getElementById('authTitle').textContent="Richiesta in attesa";
+  document.getElementById('authMessage').textContent="Il tuo account è stato creato. Potrai entrare non appena l’amministratore approverà la richiesta.";
+  document.getElementById('authLogout').style.display='block';return;
+ }
+ gate.style.display='none';
+ document.getElementById('appHeader').style.display='flex';
+ document.getElementById('appMain').style.display='block';
+ document.getElementById('appFooter').style.display='block';
+ document.getElementById('accountLabel').textContent=admin?"Amministratore":user.email;
+ if(admin) await renderAdminRequests();
+ loadData();
+}
+async function renderAdminRequests(){
+ const panel=document.getElementById('adminRequests');panel.style.display='block';
+ const {data:users,error}=await authClient.from('profiles').select('user_id,email,approved,created_at').order('created_at',{ascending:false});
+ if(error){panel.textContent="Impossibile caricare le richieste: "+error.message;return;}
+ const pending=(users||[]).filter(u=>!u.approved);
+ panel.innerHTML='<h3>Richieste di accesso ('+pending.length+')</h3>';
+ if(!pending.length){panel.innerHTML+='<p style="color:#91a4b8">Nessuna richiesta in attesa.</p>';return;}
+ pending.forEach(u=>{
+  const row=document.createElement('div');row.style.cssText="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-top:1px solid #23384b";
+  const label=document.createElement('span');label.textContent=u.email;
+  const btn=document.createElement('button');btn.textContent="Approva";btn.style.cssText="padding:8px 12px;background:#a3ff35;color:#081321;border:0;border-radius:8px;font-weight:700";
+  btn.addEventListener('click',async()=>{btn.disabled=true;const {error}=await authClient.from('profiles').update({approved:true}).eq('user_id',u.user_id);if(error){btn.disabled=false;btn.textContent="Errore";return;}row.remove();});
+  row.append(label,btn);panel.append(row);
+ });
+}
+authClient.auth.getSession().then(({data})=>{if(data.session)showApprovedApp(data.session.user);});
+authClient.auth.onAuthStateChange((_event,session)=>{if(session)showApprovedApp(session.user);else{document.getElementById('authGate').style.display='block';['appHeader','appMain','appFooter'].forEach(id=>document.getElementById(id).style.display='none');document.getElementById('adminRequests').style.display='none';}});
+
 </script>
 </body></html>
