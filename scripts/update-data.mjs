@@ -92,13 +92,12 @@ for (const league of LEAGUES) {
   if (first.round) {
     nextMatchdays.push(...fixtures.filter(m=>m.round===first.round));
   } else {
-    let previous=Date.parse(first.kickoff);
+    const matchdayStart=Date.parse(first.kickoff);
     nextMatchdays.push(first);
     for (const fixture of fixtures.slice(1)) {
       const current=Date.parse(fixture.kickoff);
-      if ((current-previous)>4*24*60*60*1000) break;
+      if ((current-matchdayStart)>4*24*60*60*1000) break;
       nextMatchdays.push(fixture);
-      previous=current;
     }
   }
 }
