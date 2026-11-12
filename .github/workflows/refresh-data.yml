@@ -1,5 +1,10 @@
 name: Refresh football data
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/refresh-data.yml'
+      - 'scripts/update-data.mjs'
   workflow_dispatch:
   schedule:
     - cron: "15 6,18 * * *"
