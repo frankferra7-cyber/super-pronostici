@@ -1,0 +1,25 @@
+name: Refresh football data
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "15 6,18 * * *"
+permissions:
+  contents: write
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Fetch fixtures and calculate estimates
+        run: node scripts/update-data.mjs
+        env:
+          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
+      - name: Publish refreshed data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/fixtures.json
+          git diff --cached --quiet || (git commit -m "Refresh football fixtures and estimates" && git push)
