@@ -84,15 +84,7 @@ for (const league of LEAGUES) {
   } catch(e) { output.warnings.push(`${league.name}: ${e.message}`); }
 }
 output.matches.sort((a,b)=>a.kickoff.localeCompare(b.kickoff));
-const response = await fetch(`${SUPABASE_URL.replace(/\/$/,"")}/rest/v1/app_data?on_conflict=id`, {
-  method: "POST",
-  headers: {
-    apikey: SUPABASE_SECRET_KEY,
-    "Content-Type": "application/json",
-    Prefer: "resolution=merge-duplicates,return=minimal"
-  },
-  body: JSON.stringify({id:"fixtures",payload:output,updated_at:now.toISOString()})
-});
-if (!response.ok) throw new Error(`Supabase upload failed ${response.status}: ${(await response.text()).slice(0,500)}`);
-console.log(`Saved ${output.matches.length} future fixtures across ${output.leagues.length} leagues; ${output.warnings.length} warnings to private Supabase storage`);
-if (!output.leagues.length) throw new Error("No competition data could be loaded; refusing to publish an empty successful refresh");
+if (!output.leagues.length) throw new Error("No competition data could be loaded; refusing to publish an empty refresh");
+await fs.mkdir("data",{recursive:true});
+await fs.writeFile("data/fixtures.json",JSON.stringify(output,null,2)+"\n");
+console.log(`Saved ${output.matches.length} future fixtures across ${output.leagues.length} leagues; ${output.warnings.length} warnings to data/fixtures.json`);
