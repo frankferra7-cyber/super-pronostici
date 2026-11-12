@@ -34,7 +34,7 @@ const leagues=[{tab:"seriea",name:"Serie A"},{tab:"epl",name:"Premier League"},{
 let currentTab="oggi", liveData=null;
 const SUPABASE_URL="https://exphhqunlvlyzjvrxdla.supabase.co";
 const SUPABASE_KEY="sb_publishable_ogiqcvuNnOjlqT5ADuqpAg_-KTAEiuz";
-let supabase=null;
+const supabase=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const dateFmt=s=>new Intl.DateTimeFormat('it-IT',{dateStyle:'medium',timeStyle:'short'}).format(new Date(s));
 const pct=n=>Number.isFinite(n)?n+"%":"—";
