@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-13T13:17:06.771Z",
+  "generatedAt": "2026-11-13T19:00:44.622Z",
   "season": 2026,
   "provider": "API Ninjas",
   "leagues": [
@@ -7,35 +7,35 @@
       "id": "seriea",
       "name": "Serie A",
       "seasonMatches": 380,
-      "finished": 95,
+      "finished": 92,
       "upcoming": 270
     },
     {
       "id": "epl",
       "name": "Premier League",
       "seasonMatches": 380,
-      "finished": 82,
+      "finished": 81,
       "upcoming": 280
     },
     {
       "id": "laliga",
       "name": "La Liga",
       "seasonMatches": 380,
-      "finished": 94,
+      "finished": 92,
       "upcoming": 260
     },
     {
       "id": "bundesliga",
       "name": "Bundesliga",
       "seasonMatches": 306,
-      "finished": 74,
+      "finished": 72,
       "upcoming": 225
     },
     {
       "id": "ligue1",
       "name": "Ligue 1",
       "seasonMatches": 306,
-      "finished": 74,
+      "finished": 72,
       "upcoming": 216
     },
     {
@@ -280,28 +280,28 @@
       "status": "scheduled",
       "prediction": {
         "expectedGoals": {
-          "home": 2,
-          "away": 1
+          "home": 2.13,
+          "away": 1.13
         },
         "oneXTwo": {
-          "home": 61,
-          "draw": 21,
-          "away": 18
+          "home": 60,
+          "draw": 20,
+          "away": 19
         },
         "doubleChance": {
-          "12": 79,
-          "1X": 82,
-          "X2": 39
+          "12": 80,
+          "1X": 81,
+          "X2": 40
         },
-        "over25": 58,
-        "under25": 42,
-        "bothTeamsToScore": 55,
+        "over25": 63,
+        "under25": 37,
+        "bothTeamsToScore": 59,
         "goalNoGoal": {
-          "goal": 55,
-          "noGoal": 45
+          "goal": 59,
+          "noGoal": 41
         },
         "mostLikelyOutcome": "1",
-        "likelyScore": "1-0"
+        "likelyScore": "2-1"
       },
       "reason": "Stima Poisson su medie casa/trasferta delle ultime partite disponibili.",
       "playerMarketsAvailable": false
@@ -532,28 +532,28 @@
       "status": "scheduled",
       "prediction": {
         "expectedGoals": {
-          "home": 2.17,
-          "away": 1.4
+          "home": 1.88,
+          "away": 1.38
         },
         "oneXTwo": {
-          "home": 55,
-          "draw": 20,
-          "away": 24
+          "home": 49,
+          "draw": 22,
+          "away": 28
         },
         "doubleChance": {
-          "12": 79,
-          "1X": 76,
-          "X2": 45
+          "12": 77,
+          "1X": 72,
+          "X2": 51
         },
-        "over25": 69,
-        "under25": 31,
-        "bothTeamsToScore": 67,
+        "over25": 63,
+        "under25": 37,
+        "bothTeamsToScore": 63,
         "goalNoGoal": {
-          "goal": 67,
-          "noGoal": 33
+          "goal": 63,
+          "noGoal": 37
         },
         "mostLikelyOutcome": "1",
-        "likelyScore": "2-1"
+        "likelyScore": "1-1"
       },
       "reason": "Stima Poisson su medie casa/trasferta delle ultime partite disponibili.",
       "playerMarketsAvailable": false
@@ -676,25 +676,25 @@
       "status": "scheduled",
       "prediction": {
         "expectedGoals": {
-          "home": 1.6,
+          "home": 1.38,
           "away": 1.25
         },
         "oneXTwo": {
-          "home": 46,
-          "draw": 25,
-          "away": 30
+          "home": 40,
+          "draw": 26,
+          "away": 34
         },
         "doubleChance": {
-          "12": 75,
-          "1X": 70,
-          "X2": 54
+          "12": 74,
+          "1X": 66,
+          "X2": 60
         },
-        "over25": 54,
-        "under25": 46,
-        "bothTeamsToScore": 57,
+        "over25": 49,
+        "under25": 51,
+        "bothTeamsToScore": 53,
         "goalNoGoal": {
-          "goal": 57,
-          "noGoal": 43
+          "goal": 53,
+          "noGoal": 47
         },
         "mostLikelyOutcome": "1",
         "likelyScore": "1-1"
@@ -892,25 +892,25 @@
       "status": "scheduled",
       "prediction": {
         "expectedGoals": {
-          "home": 1.4,
-          "away": 1.35
+          "home": 1.5,
+          "away": 1.25
         },
         "oneXTwo": {
-          "home": 38,
-          "draw": 26,
-          "away": 36
+          "home": 43,
+          "draw": 25,
+          "away": 32
         },
         "doubleChance": {
-          "12": 74,
-          "1X": 64,
-          "X2": 62
+          "12": 75,
+          "1X": 68,
+          "X2": 57
         },
         "over25": 52,
         "under25": 48,
-        "bothTeamsToScore": 56,
+        "bothTeamsToScore": 55,
         "goalNoGoal": {
-          "goal": 56,
-          "noGoal": 44
+          "goal": 55,
+          "noGoal": 45
         },
         "mostLikelyOutcome": "1",
         "likelyScore": "1-1"
@@ -928,25 +928,25 @@
       "status": "scheduled",
       "prediction": {
         "expectedGoals": {
-          "home": 2.5,
-          "away": 1.25
+          "home": 2.46,
+          "away": 1.42
         },
         "oneXTwo": {
-          "home": 65,
-          "draw": 18,
-          "away": 17
+          "home": 60,
+          "draw": 19,
+          "away": 21
         },
         "doubleChance": {
-          "12": 82,
-          "1X": 82,
-          "X2": 35
+          "12": 81,
+          "1X": 79,
+          "X2": 40
         },
-        "over25": 72,
-        "under25": 28,
-        "bothTeamsToScore": 65,
+        "over25": 74,
+        "under25": 26,
+        "bothTeamsToScore": 69,
         "goalNoGoal": {
-          "goal": 65,
-          "noGoal": 35
+          "goal": 69,
+          "noGoal": 31
         },
         "mostLikelyOutcome": "1",
         "likelyScore": "2-1"
@@ -1072,28 +1072,28 @@
       "status": "scheduled",
       "prediction": {
         "expectedGoals": {
-          "home": 2.13,
-          "away": 0.38
+          "home": 2,
+          "away": 0.46
         },
         "oneXTwo": {
-          "home": 78,
-          "draw": 16,
-          "away": 5
+          "home": 74,
+          "draw": 18,
+          "away": 7
         },
         "doubleChance": {
-          "12": 84,
-          "1X": 95,
-          "X2": 21
+          "12": 82,
+          "1X": 93,
+          "X2": 26
         },
-        "over25": 46,
-        "under25": 54,
-        "bothTeamsToScore": 28,
+        "over25": 45,
+        "under25": 55,
+        "bothTeamsToScore": 32,
         "goalNoGoal": {
-          "goal": 28,
-          "noGoal": 72
+          "goal": 32,
+          "noGoal": 68
         },
         "mostLikelyOutcome": "1",
-        "likelyScore": "2-0"
+        "likelyScore": "1-0"
       },
       "reason": "Stima Poisson su medie casa/trasferta delle ultime partite disponibili.",
       "playerMarketsAvailable": false
@@ -1180,28 +1180,28 @@
       "status": "scheduled",
       "prediction": {
         "expectedGoals": {
-          "home": 1.75,
-          "away": 2
+          "home": 1.83,
+          "away": 2.13
         },
         "oneXTwo": {
           "home": 34,
           "draw": 21,
-          "away": 44
+          "away": 45
         },
         "doubleChance": {
           "12": 79,
-          "1X": 56,
+          "1X": 55,
           "X2": 66
         },
-        "over25": 72,
-        "under25": 28,
-        "bothTeamsToScore": 71,
+        "over25": 76,
+        "under25": 24,
+        "bothTeamsToScore": 74,
         "goalNoGoal": {
-          "goal": 71,
-          "noGoal": 29
+          "goal": 74,
+          "noGoal": 26
         },
         "mostLikelyOutcome": "2",
-        "likelyScore": "1-1"
+        "likelyScore": "1-2"
       },
       "reason": "Stima Poisson su medie casa/trasferta delle ultime partite disponibili.",
       "playerMarketsAvailable": false
@@ -1324,25 +1324,25 @@
       "status": "scheduled",
       "prediction": {
         "expectedGoals": {
-          "home": 1.77,
-          "away": 2.08
+          "home": 1.63,
+          "away": 2.25
         },
         "oneXTwo": {
-          "home": 34,
-          "draw": 21,
-          "away": 45
+          "home": 28,
+          "draw": 20,
+          "away": 52
         },
         "doubleChance": {
-          "12": 79,
-          "1X": 55,
-          "X2": 66
+          "12": 80,
+          "1X": 48,
+          "X2": 72
         },
         "over25": 74,
         "under25": 26,
-        "bothTeamsToScore": 73,
+        "bothTeamsToScore": 72,
         "goalNoGoal": {
-          "goal": 73,
-          "noGoal": 27
+          "goal": 72,
+          "noGoal": 28
         },
         "mostLikelyOutcome": "2",
         "likelyScore": "1-2"
@@ -1540,25 +1540,25 @@
       "status": "scheduled",
       "prediction": {
         "expectedGoals": {
-          "home": 1.4,
-          "away": 0.7
+          "home": 1.13,
+          "away": 0.78
         },
         "oneXTwo": {
-          "home": 54,
-          "draw": 28,
-          "away": 19
+          "home": 44,
+          "draw": 31,
+          "away": 25
         },
         "doubleChance": {
-          "12": 72,
-          "1X": 81,
-          "X2": 46
+          "12": 69,
+          "1X": 75,
+          "X2": 56
         },
-        "over25": 35,
-        "under25": 65,
-        "bothTeamsToScore": 38,
+        "over25": 30,
+        "under25": 70,
+        "bothTeamsToScore": 36,
         "goalNoGoal": {
-          "goal": 38,
-          "noGoal": 62
+          "goal": 36,
+          "noGoal": 64
         },
         "mostLikelyOutcome": "1",
         "likelyScore": "1-0"
@@ -1576,25 +1576,25 @@
       "status": "scheduled",
       "prediction": {
         "expectedGoals": {
-          "home": 1.5,
-          "away": 1.9
+          "home": 1.65,
+          "away": 2
         },
         "oneXTwo": {
-          "home": 31,
-          "draw": 22,
-          "away": 47
+          "home": 32,
+          "draw": 21,
+          "away": 46
         },
         "doubleChance": {
-          "12": 78,
-          "1X": 53,
-          "X2": 69
+          "12": 79,
+          "1X": 54,
+          "X2": 68
         },
-        "over25": 66,
-        "under25": 34,
-        "bothTeamsToScore": 66,
+        "over25": 71,
+        "under25": 29,
+        "bothTeamsToScore": 70,
         "goalNoGoal": {
-          "goal": 66,
-          "noGoal": 34
+          "goal": 70,
+          "noGoal": 30
         },
         "mostLikelyOutcome": "2",
         "likelyScore": "1-1"
@@ -1612,28 +1612,28 @@
       "status": "scheduled",
       "prediction": {
         "expectedGoals": {
-          "home": 2.13,
-          "away": 1.5
+          "home": 2,
+          "away": 1.38
         },
         "oneXTwo": {
           "home": 52,
-          "draw": 21,
-          "away": 27
+          "draw": 22,
+          "away": 26
         },
         "doubleChance": {
-          "12": 79,
-          "1X": 73,
+          "12": 78,
+          "1X": 74,
           "X2": 48
         },
-        "over25": 70,
-        "under25": 30,
-        "bothTeamsToScore": 68,
+        "over25": 66,
+        "under25": 34,
+        "bothTeamsToScore": 65,
         "goalNoGoal": {
-          "goal": 68,
-          "noGoal": 32
+          "goal": 65,
+          "noGoal": 35
         },
         "mostLikelyOutcome": "1",
-        "likelyScore": "2-1"
+        "likelyScore": "1-1"
       },
       "reason": "Stima Poisson su medie casa/trasferta delle ultime partite disponibili.",
       "playerMarketsAvailable": false
