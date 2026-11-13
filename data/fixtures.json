@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-12T19:03:46.694Z",
+  "generatedAt": "2026-11-13T01:18:30.707Z",
   "season": 2026,
   "provider": "API Ninjas",
   "leagues": [
@@ -21,7 +21,7 @@
       "id": "laliga",
       "name": "La Liga",
       "seasonMatches": 380,
-      "finished": 95,
+      "finished": 94,
       "upcoming": 260
     },
     {
@@ -821,27 +821,27 @@
       "prediction": {
         "expectedGoals": {
           "home": 0.75,
-          "away": 1.23
+          "away": 1
         },
         "oneXTwo": {
-          "home": 23,
-          "draw": 30,
-          "away": 47
+          "home": 27,
+          "draw": 33,
+          "away": 40
         },
         "doubleChance": {
-          "12": 70,
-          "1X": 53,
-          "X2": 77
+          "12": 67,
+          "1X": 60,
+          "X2": 73
         },
-        "over25": 32,
-        "under25": 68,
-        "bothTeamsToScore": 37,
+        "over25": 26,
+        "under25": 74,
+        "bothTeamsToScore": 33,
         "goalNoGoal": {
-          "goal": 37,
-          "noGoal": 63
+          "goal": 33,
+          "noGoal": 67
         },
         "mostLikelyOutcome": "2",
-        "likelyScore": "0-1"
+        "likelyScore": "0-0"
       },
       "reason": "Stima Poisson su medie casa/trasferta delle ultime partite disponibili.",
       "playerMarketsAvailable": false
@@ -1648,25 +1648,25 @@
       "status": "scheduled",
       "prediction": {
         "expectedGoals": {
-          "home": 1.12,
-          "away": 1.32
+          "home": 1.1,
+          "away": 1.2
         },
         "oneXTwo": {
-          "home": 32,
-          "draw": 27,
-          "away": 41
+          "home": 33,
+          "draw": 28,
+          "away": 38
         },
         "doubleChance": {
-          "12": 73,
-          "1X": 59,
-          "X2": 68
+          "12": 72,
+          "1X": 62,
+          "X2": 67
         },
-        "over25": 44,
-        "under25": 56,
-        "bothTeamsToScore": 49,
+        "over25": 40,
+        "under25": 60,
+        "bothTeamsToScore": 47,
         "goalNoGoal": {
-          "goal": 49,
-          "noGoal": 51
+          "goal": 47,
+          "noGoal": 53
         },
         "mostLikelyOutcome": "2",
         "likelyScore": "1-1"
