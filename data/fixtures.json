@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-13T19:00:44.622Z",
+  "generatedAt": "2026-11-14T01:10:24.974Z",
   "season": 2026,
   "provider": "API Ninjas",
   "leagues": [
@@ -21,7 +21,7 @@
       "id": "laliga",
       "name": "La Liga",
       "seasonMatches": 380,
-      "finished": 92,
+      "finished": 91,
       "upcoming": 260
     },
     {
