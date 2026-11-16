@@ -231,10 +231,10 @@ async function showApprovedApp(user){
  loadData();
 }
 async function updatePendingCount(){
- const badge=document.getElementById('pendingRequestsBadge'),menuCount=document.getElementById('pendingRequestsMenuCount');
+ const badge=document.getElementById('pendingRequestsBadge');
  const {data,error}=await authClient.from('profiles').select('user_id').eq('approved',false);
- if(error){badge.style.display='none';menuCount.textContent='';return;}
- const count=(data||[]).length;badge.textContent=count>99?'99+':String(count);badge.style.display=count?'inline-block':'none';menuCount.textContent=count?'('+count+')':'';
+ if(error){badge.style.display='none';return;}
+ const count=(data||[]).length;badge.textContent=count>99?'99+':String(count);badge.style.display=count?'inline-block':'none';
 }
 async function renderAdminRequests(){
  const panel=document.getElementById('adminRequestsApp');
