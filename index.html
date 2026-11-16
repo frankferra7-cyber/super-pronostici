@@ -26,6 +26,7 @@ footer{max-width:1100px;margin:auto;padding:0 20px 28px;color:#71869a;font-size:
  <div style="font-size:26px">⚽ <b>SUPER PRONOSTICI</b></div><h2 id="authTitle">Accedi o richiedi un account</h2>
  <p id="authMessage" style="color:#91a4b8">Registrati con la tua email. L’accesso sarà attivato dopo l’approvazione dell’amministratore.</p>
  <form id="authForm" style="display:grid;gap:10px"><input id="authEmail" type="email" required placeholder="Email" autocomplete="email" style="padding:13px;border-radius:10px;border:1px solid #385168;background:#07111f;color:white"><input id="authPassword" type="password" required minlength="8" placeholder="Password (almeno 8 caratteri)" autocomplete="current-password" style="padding:13px;border-radius:10px;border:1px solid #385168;background:#07111f;color:white"><button type="submit" id="authSubmit" style="padding:13px;border:0;border-radius:10px;background:#a3ff35;color:#081321;font-weight:800">Accedi</button></form>\n <button id="forgotPassword" type="button" style="display:block;background:transparent;border:0;color:#a3ff35;text-align:left;padding:4px 0;cursor:pointer">Password dimenticata?</button>
+ <button id="recoveryBack" type="button" style="display:none;background:transparent;border:1px solid #385168;color:#dce8f2;border-radius:9px;padding:10px;cursor:pointer;text-align:left">← Torna ad Accedi</button>
  <div style="display:flex;gap:10px;margin-top:12px"><button id="showLogin" type="button" style="flex:1;padding:10px;border-radius:9px">Accedi</button><button id="showSignup" type="button" style="flex:1;padding:10px;border-radius:9px">Richiedi registrazione</button></div>
  <button id="authLogout" type="button" style="display:none;margin-top:12px;padding:10px">Esci</button>
  <div id="adminRequests" style="display:none;margin-top:18px"></div>
@@ -122,6 +123,7 @@ function setAuthMode(mode){
  password.style.display=recovery?"none":"block";
  password.required=!recovery;
  document.getElementById('forgotPassword').style.display=mode==="login"?"block":"none";
+ document.getElementById('recoveryBack').style.display=recovery?"block":"none";
  document.getElementById('showLogin').style.display=(recovery||reset)?"none":"block";
  document.getElementById('showSignup').style.display=(recovery||reset)?"none":"block";
  document.getElementById('authMessage').textContent=mode==="login"?"Inserisci le tue credenziali.":mode==="signup"?"La registrazione verrà sottoposta all’approvazione dell’amministratore.":recovery?"Inserisci la tua email: ti invieremo un link per creare una nuova password.":"Inserisci una nuova password di almeno 8 caratteri.";
@@ -129,6 +131,7 @@ function setAuthMode(mode){
 document.getElementById('showLogin').addEventListener('click',()=>setAuthMode("login"));
 document.getElementById('showSignup').addEventListener('click',()=>setAuthMode("signup"));
 document.getElementById('forgotPassword').addEventListener('click',()=>setAuthMode("recovery"));
+document.getElementById('recoveryBack').addEventListener('click',()=>setAuthMode("login"));
 document.getElementById('authForm').addEventListener('submit',async e=>{
  e.preventDefault();
  const email=document.getElementById('authEmail').value.trim().toLowerCase();
