@@ -26,7 +26,16 @@ footer{max-width:1100px;margin:auto;padding:0 20px 28px;color:#71869a;font-size:
  <div style="font-size:26px">⚽ <b>SUPER PRONOSTICI</b></div><h2 id="authTitle">Accedi o richiedi un account</h2>
  <p id="authMessage" style="color:#91a4b8">Registrati con la tua email. L’accesso sarà attivato dopo l’approvazione dell’amministratore.</p>
  <form id="authForm" style="display:grid;gap:10px"><input id="authEmail" type="email" required placeholder="Email" autocomplete="email" style="padding:13px;border-radius:10px;border:1px solid #385168;background:#07111f;color:white"><input id="authPassword" type="password" required minlength="8" placeholder="Password (almeno 8 caratteri)" autocomplete="current-password" style="padding:13px;border-radius:10px;border:1px solid #385168;background:#07111f;color:white"><button type="submit" id="authSubmit" style="padding:13px;border:0;border-radius:10px;background:#a3ff35;color:#081321;font-weight:800">Accedi</button></form>\n <button id="forgotPassword" type="button" style="display:block;background:transparent;border:0;color:#a3ff35;text-align:left;padding:4px 0;cursor:pointer">Password dimenticata?</button>
- <button id="recoveryBack" type="button" style="display:none;background:transparent;border:1px solid #385168;color:#dce8f2;border-radius:9px;padding:10px;cursor:pointer;text-align:left">← Torna ad Accedi</button>
+ <section id="recoveryScreen" style="display:none;margin-top:18px;padding:18px;background:#0a1725;border:1px solid #385168;border-radius:12px">
+  <h2 style="margin:0 0 8px">Recupero password</h2>
+  <p style="color:#91a4b8">Inserisci l’indirizzo email del tuo account. Ti invieremo un link per reimpostare la password.</p>
+  <form id="recoveryForm" style="display:grid;gap:10px">
+   <input id="recoveryEmail" type="email" required placeholder="La tua email" autocomplete="email" style="padding:13px;border-radius:10px;border:1px solid #385168;background:#07111f;color:white">
+   <button id="recoverySubmit" type="submit" style="padding:13px;border:0;border-radius:10px;background:#a3ff35;color:#081321;font-weight:800">Invia link di recupero</button>
+  </form>
+  <button id="recoveryBack" type="button" style="margin-top:12px;background:transparent;border:1px solid #385168;color:#dce8f2;border-radius:9px;padding:10px;cursor:pointer">← Torna ad Accedi</button>
+  <p id="recoveryMessage" role="status" style="color:#91a4b8"></p>
+ </section>
  <div style="display:flex;gap:10px;margin-top:12px"><button id="showLogin" type="button" style="flex:1;padding:10px;border-radius:9px">Accedi</button><button id="showSignup" type="button" style="flex:1;padding:10px;border-radius:9px">Richiedi registrazione</button></div>
  <button id="authLogout" type="button" style="display:none;margin-top:12px;padding:10px">Esci</button>
  <div id="adminRequests" style="display:none;margin-top:18px"></div>
@@ -130,8 +139,42 @@ function setAuthMode(mode){
 }
 document.getElementById('showLogin').addEventListener('click',()=>setAuthMode("login"));
 document.getElementById('showSignup').addEventListener('click',()=>setAuthMode("signup"));
-document.getElementById('forgotPassword').addEventListener('click',()=>setAuthMode("recovery"));
-document.getElementById('recoveryBack').addEventListener('click',()=>setAuthMode("login"));
+document.getElementById('forgotPassword').addEventListener('click',()=>{
+ document.getElementById('authTitle').textContent="Recupero password";
+ document.getElementById('authMessage').style.display='none';
+ document.getElementById('authForm').style.display='none';
+ document.getElementById('forgotPassword').style.display='none';
+ document.getElementById('showLogin').style.display='none';
+ document.getElementById('showSignup').style.display='none';
+ document.getElementById('recoveryScreen').style.display='block';
+ document.getElementById('recoveryEmail').value=document.getElementById('authEmail').value.trim();
+ document.getElementById('recoveryMessage').textContent='';
+ document.getElementById('recoveryEmail').focus();
+});
+document.getElementById('recoveryBack').addEventListener('click',()=>{
+ document.getElementById('recoveryScreen').style.display='none';
+ document.getElementById('authForm').style.display='grid';
+ document.getElementById('authMessage').style.display='block';
+ document.getElementById('authTitle').textContent="Accedi a Super Pronostici";
+ document.getElementById('forgotPassword').style.display='block';
+ document.getElementById('showLogin').style.display='block';
+ document.getElementById('showSignup').style.display='block';
+ setAuthMode("login");
+});
+document.getElementById('recoveryForm').addEventListener('submit',async e=>{
+ e.preventDefault();
+ const email=document.getElementById('recoveryEmail').value.trim().toLowerCase();
+ const btn=document.getElementById('recoverySubmit');
+ const status=document.getElementById('recoveryMessage');
+ btn.disabled=true;
+ try{
+  const redirectTo=window.location.origin+window.location.pathname;
+  const {error}=await authClient.auth.resetPasswordForEmail(email,{redirectTo});
+  if(error)throw error;
+  status.textContent="Se l’indirizzo è registrato, riceverai un link per reimpostare la password. Controlla anche la cartella spam.";
+ }catch(err){status.textContent=err.message||"Impossibile inviare il link di recupero.";}
+ finally{btn.disabled=false;}
+});
 document.getElementById('authForm').addEventListener('submit',async e=>{
  e.preventDefault();
  const email=document.getElementById('authEmail').value.trim().toLowerCase();
