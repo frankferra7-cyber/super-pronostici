@@ -44,7 +44,7 @@ footer{max-width:1100px;margin:auto;padding:0 20px 28px;color:#71869a;font-size:
 <header id="appHeader" style="display:none"><div class="brand"><div class="ball" aria-hidden="true">⚽</div><div><strong>SUPER PRONOSTICI</strong><small>Football intelligence</small></div></div><div style="display:flex;align-items:center;gap:10px"><div class="private" id="accountLabel">Area riservata</div><button id="appLogout" type="button" style="padding:7px 11px;border-radius:99px;background:#14283a;color:#dce8f2;border:1px solid #315044">Esci</button></div></header>
 <main id="appMain" style="display:none">
 <section class="hero"><div class="eyebrow">La tua centrale calcistica</div><h1>Leggi la partita.<br><span style="color:var(--green)">Analizza i numeri.</span></h1><p>Pronostici e statistiche per i principali campionati europei, con analisi dedicate anche ai singoli giocatori.</p></section>
-<nav aria-label="Campionati e sezioni"><button class="active" data-tab="oggi">⚡ Oggi</button><button data-tab="tutte">Tutte</button><button data-tab="seriea">🇮🇹 Serie A</button><button data-tab="epl">🏴 Premier</button><button data-tab="laliga">🇪🇸 La Liga</button><button data-tab="bundesliga">🇩🇪 Bundesliga</button><button data-tab="ligue1">🇫🇷 Ligue 1</button><button data-tab="ucl">⭐ Champions</button><button data-tab="uel">🏆 Europa League</button><button data-tab="giocatori">Giocatori</button><button data-tab="storico">Storico</button><button id="adminRequestsTab" data-tab="richieste" style="display:none">👤 Richieste di registrazione</button></nav>
+<nav aria-label="Campionati e sezioni"><button class="active" data-tab="oggi">⚡ Oggi</button><button data-tab="tutte">Tutte</button><button data-tab="seriea">🇮🇹 Serie A</button><button data-tab="epl">🏴 Premier</button><button data-tab="laliga">🇪🇸 La Liga</button><button data-tab="bundesliga">🇩🇪 Bundesliga</button><button data-tab="ligue1">🇫🇷 Ligue 1</button><button data-tab="ucl">⭐ Champions</button><button data-tab="uel">🏆 Europa League</button><button data-tab="giocatori">Giocatori</button><button data-tab="storico">Storico</button><div id="adminMenu" class="admin-menu" style="display:none;position:relative"><button id="adminMenuToggle" type="button" aria-expanded="false" style="position:relative">🛠 Amministratore ▾ <span id="pendingRequestsBadge" style="display:none;position:absolute;top:-7px;right:-7px;min-width:19px;height:19px;padding:0 5px;border-radius:12px;background:#ef4444;color:white;font-size:12px;font-weight:800;line-height:19px;text-align:center;box-shadow:0 0 0 2px #07111f">0</span></button><div id="adminMenuDropdown" style="display:none;position:absolute;top:calc(100% + 8px);right:0;z-index:50;min-width:230px;padding:7px;background:#101f30;border:1px solid #385168;border-radius:11px;box-shadow:0 12px 28px #0008"><button id="adminRequestsTab" data-tab="richieste" type="button" style="display:flex;width:100%;justify-content:space-between;align-items:center;background:transparent;border:0;color:#e8f0f8;text-align:left;padding:11px;border-radius:8px;cursor:pointer">👤 Richieste di registrazione <span id="pendingRequestsMenuCount" style="color:#ff5b62;font-weight:800"></span></button></div></div></nav>
 <section><div class="section-head"><h2 id="sectionTitle">Panoramica</h2><span id="today"></span></div><div class="grid" id="content"><div class="card empty">La base dell'app è pronta. Il prossimo passaggio sarà collegare una fonte dati calcistica per caricare partite, statistiche e rose aggiornate: non mostriamo pronostici inventati.</div></div><div id="adminRequestsApp" style="display:none;margin-top:16px;padding:16px;background:#101f30;border:1px solid #23384b;border-radius:14px"></div></section>
 <div class="feature-grid"><div class="feature"><div class="ico">🎯</div><strong>Pronostici partita</strong><p>1X2, doppia chance, Over/Under e Gol/No Gol.</p></div><div class="feature"><div class="ico">🟨</div><strong>Possibili ammoniti</strong><p>Analisi individuale basata su falli, cartellini e minutaggio.</p></div><div class="feature"><div class="ico">🥅</div><strong>Tiri in porta</strong><p>Stime sui giocatori e probabilità di almeno un tiro nello specchio.</p></div></div>
 
@@ -95,6 +95,8 @@ function render(){
 }
 document.getElementById('today').textContent=new Intl.DateTimeFormat('it-IT',{dateStyle:'full'}).format(new Date());
 document.querySelectorAll('nav button').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));b.classList.add('active');currentTab=b.dataset.tab;render();}));
+document.getElementById("adminMenuToggle").addEventListener("click",()=>{const menu=document.getElementById("adminMenuDropdown");const open=menu.style.display==="block";menu.style.display=open?"none":"block";document.getElementById("adminMenuToggle").setAttribute("aria-expanded",String(!open));});
+document.getElementById("adminRequestsTab").addEventListener("click",()=>{document.getElementById("adminMenuDropdown").style.display="none";document.getElementById("adminMenuToggle").setAttribute("aria-expanded","false");});
 document.getElementById('content').addEventListener('click',e=>{
  const tab=e.target.closest('[data-match-tab]');
  if(!tab)return;
@@ -210,7 +212,8 @@ document.getElementById('authForm').addEventListener('submit',async e=>{
 async function showApprovedApp(user){
  const gate=document.getElementById('authGate');
  const admin=user.email?.toLowerCase()===ADMIN_EMAIL;
- document.getElementById('adminRequestsTab').style.display=admin?'inline-block':'none';
+ document.getElementById('adminMenu').style.display=admin?'block':'none';
+ if(admin) updatePendingCount();
  const {data:profile,error}=await authClient.from('profiles').select('approved').eq('user_id',user.id).maybeSingle();
  if(error){document.getElementById('authTitle').textContent="Configurazione da completare";document.getElementById('authMessage').textContent="Il sistema autorizzazioni non è ancora configurato nel database. Contatta l’amministratore.";document.getElementById('authLogout').style.display='block';return;}
  if(!admin&&!profile?.approved){
@@ -226,18 +229,25 @@ async function showApprovedApp(user){
  if(admin) await renderAdminRequests();
  loadData();
 }
+async function updatePendingCount(){
+ const badge=document.getElementById('pendingRequestsBadge'),menuCount=document.getElementById('pendingRequestsMenuCount');
+ const {data,error}=await authClient.from('profiles').select('user_id').eq('approved',false);
+ if(error){badge.style.display='none';menuCount.textContent='';return;}
+ const count=(data||[]).length;badge.textContent=count>99?'99+':String(count);badge.style.display=count?'inline-block':'none';menuCount.textContent=count?'('+count+')':'';
+}
 async function renderAdminRequests(){
  const panel=document.getElementById('adminRequestsApp');
  const {data:users,error}=await authClient.from('profiles').select('user_id,email,approved,created_at').order('created_at',{ascending:false});
  if(error){panel.textContent="Impossibile caricare le richieste: "+error.message;return;}
  const pending=(users||[]).filter(u=>!u.approved);
+ updatePendingCount();
  panel.innerHTML='<h3>Richieste di accesso ('+pending.length+')</h3>';
  if(!pending.length){panel.innerHTML+='<p style="color:#91a4b8">Nessuna richiesta in attesa.</p>';return;}
  pending.forEach(u=>{
   const row=document.createElement('div');row.style.cssText="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-top:1px solid #23384b";
   const label=document.createElement('span');label.textContent=u.email;
   const btn=document.createElement('button');btn.textContent="Approva";btn.style.cssText="padding:8px 12px;background:#a3ff35;color:#081321;border:0;border-radius:8px;font-weight:700";
-  btn.addEventListener('click',async()=>{btn.disabled=true;const {error}=await authClient.from('profiles').update({approved:true}).eq('user_id',u.user_id);if(error){btn.disabled=false;btn.textContent="Errore";return;}row.remove();});
+  btn.addEventListener('click',async()=>{btn.disabled=true;const {error}=await authClient.from('profiles').update({approved:true}).eq('user_id',u.user_id);if(error){btn.disabled=false;btn.textContent="Errore";return;}row.remove();updatePendingCount();});
   row.append(label,btn);panel.append(row);
  });
 }
