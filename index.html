@@ -33,10 +33,10 @@ footer{max-width:1100px;margin:auto;padding:0 20px 28px;color:#71869a;font-size:
 <header id="appHeader" style="display:none"><div class="brand"><div class="ball" aria-hidden="true">⚽</div><div><strong>SUPER PRONOSTICI</strong><small>Football intelligence</small></div></div><div style="display:flex;align-items:center;gap:10px"><div class="private" id="accountLabel">Area riservata</div><button id="appLogout" type="button" style="padding:7px 11px;border-radius:99px;background:#14283a;color:#dce8f2;border:1px solid #315044">Esci</button></div></header>
 <main id="appMain" style="display:none">
 <section class="hero"><div class="eyebrow">La tua centrale calcistica</div><h1>Leggi la partita.<br><span style="color:var(--green)">Analizza i numeri.</span></h1><p>Pronostici e statistiche per i principali campionati europei, con analisi dedicate anche ai singoli giocatori.</p></section>
-<nav aria-label="Campionati e sezioni"><button class="active" data-tab="oggi">⚡ Oggi</button><button data-tab="tutte">Tutte</button><button data-tab="seriea">🇮🇹 Serie A</button><button data-tab="epl">🏴 Premier</button><button data-tab="laliga">🇪🇸 La Liga</button><button data-tab="bundesliga">🇩🇪 Bundesliga</button><button data-tab="ligue1">🇫🇷 Ligue 1</button><button data-tab="ucl">⭐ Champions</button><button data-tab="uel">🏆 Europa League</button><button data-tab="giocatori">Giocatori</button><button data-tab="storico">Storico</button></nav>
-<section><div class="section-head"><h2 id="sectionTitle">Panoramica</h2><span id="today"></span></div><div class="grid" id="content"><div class="card empty">La base dell'app è pronta. Il prossimo passaggio sarà collegare una fonte dati calcistica per caricare partite, statistiche e rose aggiornate: non mostriamo pronostici inventati.</div></div></section>
+<nav aria-label="Campionati e sezioni"><button class="active" data-tab="oggi">⚡ Oggi</button><button data-tab="tutte">Tutte</button><button data-tab="seriea">🇮🇹 Serie A</button><button data-tab="epl">🏴 Premier</button><button data-tab="laliga">🇪🇸 La Liga</button><button data-tab="bundesliga">🇩🇪 Bundesliga</button><button data-tab="ligue1">🇫🇷 Ligue 1</button><button data-tab="ucl">⭐ Champions</button><button data-tab="uel">🏆 Europa League</button><button data-tab="giocatori">Giocatori</button><button data-tab="storico">Storico</button><button id="adminRequestsTab" data-tab="richieste" style="display:none">👤 Richieste di registrazione</button></nav>
+<section><div class="section-head"><h2 id="sectionTitle">Panoramica</h2><span id="today"></span></div><div class="grid" id="content"><div class="card empty">La base dell'app è pronta. Il prossimo passaggio sarà collegare una fonte dati calcistica per caricare partite, statistiche e rose aggiornate: non mostriamo pronostici inventati.</div></div><div id="adminRequestsApp" style="display:none;margin-top:16px;padding:16px;background:#101f30;border:1px solid #23384b;border-radius:14px"></div></section>
 <div class="feature-grid"><div class="feature"><div class="ico">🎯</div><strong>Pronostici partita</strong><p>1X2, doppia chance, Over/Under e Gol/No Gol.</p></div><div class="feature"><div class="ico">🟨</div><strong>Possibili ammoniti</strong><p>Analisi individuale basata su falli, cartellini e minutaggio.</p></div><div class="feature"><div class="ico">🥅</div><strong>Tiri in porta</strong><p>Stime sui giocatori e probabilità di almeno un tiro nello specchio.</p></div></div>
-<div id="adminRequestsApp" style="display:none;margin-top:20px;padding:16px;background:#101f30;border:1px solid #23384b;border-radius:14px"></div>
+
 <div class="disclaimer">Le percentuali saranno stime statistiche, non certezze né garanzie di vincita. L'app è pensata per analisi personali e non raccoglie scommesse o denaro.</div>
 </main><footer id="appFooter" style="display:none">SUPER PRONOSTICI · Versione iniziale · Dati e modelli AI da collegare</footer>
 <script>
@@ -60,7 +60,17 @@ function matchCard(m){
 }
 function render(){
  const title=document.getElementById('sectionTitle'),content=document.getElementById('content');
+ const adminPanel=document.getElementById('adminRequestsApp');
  const matches=(liveData?.matches||[]).filter(m=>new Date(m.kickoff)>=new Date());
+ if(currentTab==="richieste"){
+  title.textContent="Richieste di registrazione";
+  document.getElementById('today').textContent="Gestione accessi";
+  content.innerHTML="";
+  adminPanel.style.display="block";
+  renderAdminRequests();
+  return;
+ }
+ adminPanel.style.display="none";
  if(currentTab==="giocatori"){title.textContent="Analisi giocatori";content.innerHTML='<div class="card empty">Le stime su ammonizioni e tiri in porta saranno attivate solo quando avremo statistiche individuali verificate e minuti/ruoli aggiornati. Nessun nome o probabilità inventati.</div>';return;}
  if(currentTab==="storico"){title.textContent="Storico pronostici";content.innerHTML='<div class="card empty">Lo storico si popolerà con le previsioni salvate e i risultati ufficiali nei successivi aggiornamenti. Nessun risultato viene simulato.</div>';return;}
  const selected=leagues.find(l=>l.tab===currentTab);
@@ -152,6 +162,7 @@ document.getElementById('authForm').addEventListener('submit',async e=>{
 async function showApprovedApp(user){
  const gate=document.getElementById('authGate');
  const admin=user.email?.toLowerCase()===ADMIN_EMAIL;
+ document.getElementById('adminRequestsTab').style.display=admin?'inline-block':'none';
  const {data:profile,error}=await authClient.from('profiles').select('approved').eq('user_id',user.id).maybeSingle();
  if(error){document.getElementById('authTitle').textContent="Configurazione da completare";document.getElementById('authMessage').textContent="Il sistema autorizzazioni non è ancora configurato nel database. Contatta l’amministratore.";document.getElementById('authLogout').style.display='block';return;}
  if(!admin&&!profile?.approved){
@@ -168,7 +179,7 @@ async function showApprovedApp(user){
  loadData();
 }
 async function renderAdminRequests(){
- const panel=document.getElementById('adminRequestsApp');panel.style.display='block';
+ const panel=document.getElementById('adminRequestsApp');
  const {data:users,error}=await authClient.from('profiles').select('user_id,email,approved,created_at').order('created_at',{ascending:false});
  if(error){panel.textContent="Impossibile caricare le richieste: "+error.message;return;}
  const pending=(users||[]).filter(u=>!u.approved);
