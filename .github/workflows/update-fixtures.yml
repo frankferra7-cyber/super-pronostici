@@ -1,0 +1,31 @@
+name: Aggiorna Partite e Statistiche
+
+on:
+  schedule:
+    - cron: '0 6 * * *' # Si attiva ogni giorno alle 06:00 UTC
+  workflow_dispatch:     # Ti permette di avviarlo a mano quando vuoi da GitHub
+
+jobs:
+  sync-data:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clona repository
+        uses: actions/checkout@v4
+
+      - name: Configura Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Installa dipendenze ed esegui script
+        env:
+          RAPIDAPI_KEY: ${{ secrets.RAPIDAPI_KEY }}
+        run: node scripts/fetch-football.js
+
+      - name: Salva e carica le modifiche sul sito
+        run: |
+          git config --global user.name "GitHub Action Bot"
+          git config --global user.email "bot@github.com"
+          git add data/fixtures.json
+          git commit -m "Aggiornamento automatico fixtures e statistiche giocatori" || echo "Nessuna modifica"
+          git push
