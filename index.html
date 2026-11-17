@@ -28,4 +28,25 @@ footer{max-width:1100px;margin:auto;padding:0 20px 28px;color:#71869a;font-size:
 <button id="forgotPassword" type="button" style="display:block;background:transparent;border:0;color:#a3ff35;text-align:left;padding:4px 0;cursor:pointer">Password dimenticata?</button>
 <section id="recoveryScreen" style="display:none;margin-top:18px;padding:18px;background:#0a1725;border:1px solid #385168;border-radius:12px">
 <h2 style="margin:0 0 8px">Recupero password</h2>
-<p style="color:#91a4b
+<p style="color:#91a4b8">Inserisci l’indirizzo email del tuo account. Ti invieremo un link per reimpostare la password.</p>
+<form id="recoveryForm" style="display:grid;gap:10px">
+<input id="recoveryEmail" type="email" required placeholder="La tua email" autocomplete="email" style="padding:13px;border-radius:10px;border:1px solid #385168;background:#07111f;color:white">
+<button id="recoverySubmit" type="submit" style="padding:13px;border:0;border-radius:10px;background:#a3ff35;color:#081321;font-weight:800">Invia link di recupero</button>
+</form>
+<button id="recoveryBack" type="button" style="margin-top:12px;background:transparent;border:1px solid #385168;color:#dce8f2;border-radius:9px;padding:10px;cursor:pointer">← Torna ad Accedi</button>
+<p id="recoveryMessage" role="status" style="color:#91a4b8"></p>
+</section>
+<div style="display:flex;justify-content:center;margin-top:14px"><button id="showLogin" type="button" style="display:none;width:100%;padding:11px;border-radius:10px;border:1px solid #385168;background:#14283a;color:#dce8f2;font-weight:650;cursor:pointer">Torna ad Accedi</button><button id="showSignup" type="button" style="display:none;width:100%;padding:11px;border-radius:10px;border:1px solid #385168;background:#14283a;color:#dce8f2;font-weight:650;cursor:pointer">Non hai un account? Richiedi registrazione</button></div>
+<button id="authLogout" type="button" style="display:none;margin-top:12px;padding:10px">Esci</button>
+<div id="adminRequests" style="display:none;margin-top:18px"></div>
+</section>
+<header id="appHeader" style="display:none"><div class="brand"><div class="ball" aria-hidden="true">⚽</div><div><strong>SUPER PRONOSTICI</strong><small>Football intelligence</small></div></div><div style="display:flex;align-items:center;gap:12px"><div style="display:flex;align-items:center;gap:8px"><div class="private" id="accountLabel">Area riservata</div><div id="adminMenuBar" style="display:none;align-items:center"><div id="adminMenu" style="display:none"><button id="adminRequestsTab" data-tab="richieste" type="button" style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:9px;background:#14283a;color:#dce8f2;border:1px solid #315044;font-size:12px;cursor:pointer">Richieste di registrazione <span id="pendingRequestsBadge" style="display:none;min-width:18px;height:18px;padding:0 5px;border-radius:10px;background:#ef4444;color:white;font-size:11px;font-weight:800;line-height:18px;text-align:center">0</span></button></div></div></div><button id="appLogout" type="button" style="padding:7px 11px;border-radius:99px;background:#14283a;color:#dce8f2;border:1px solid #315044">Esci</button></div></header>
+<main id="appMain" style="display:none">
+<section class="hero"><div class="eyebrow">La tua centrale calcistica</div><h1>Leggi la partita.<br><span style="color:var(--green)">Analizza i numeri.</span></h1><p>Pronostici e statistiche per i principali campionati europei, con analisi dedicate anche ai singoli giocatori.</p></section>
+<nav aria-label="Campionati e sezioni"><button class="active" data-tab="oggi">⚡ Oggi</button><button data-tab="tutte">Tutte</button><button data-tab="seriea">🇮🇹 Serie A</button><button data-tab="epl">🏴 Premier</button><button data-tab="laliga">🇪🇸 La Liga</button><button data-tab="bundesliga">🇩🇪 Bundesliga</button><button data-tab="ligue1">🇫🇷 Ligue 1</button><button data-tab="ucl">⭐ Champions</button><button data-tab="uel">🏆 Europa League</button><button data-tab="giocatori">Giocatori</button><button data-tab="storico">Storico</button></nav>
+<section><div class="section-head"><h2 id="sectionTitle">Panoramica</h2><span id="today"></span></div><div class="grid" id="content"><div class="card empty">Caricamento partite in corso...</div></div><div id="adminRequestsApp" style="display:none;margin-top:16px;padding:16px;background:#101f30;border:1px solid #23384b;border-radius:14px"></div></section>
+<div class="feature-grid"><div class="feature"><div class="ico">🎯</div><strong>Pronostici partita</strong><p>1X2, doppia chance, Over/Under e Gol/No Gol.</p></div><div class="feature"><div class="ico">🟨</div><strong>Possibili ammoniti</strong><p>Analisi individuale basata su falli, cartellini e minutaggio.</p></div><div class="feature"><div class="ico">🥅</div><strong>Tiri in porta</strong><p>Stime sui giocatori e probabilità di almeno un tiro nello specchio.</p></div></div>
+<div class="disclaimer">Le percentuali saranno stime statistiche, non certezze né garanzie di vincita. L'app è pensata per analisi personali e non raccoglie scommesse o denaro.</div>
+</main><footer id="appFooter" style="display:none">SUPER PRONOSTICI · Dati sincronizzati</footer>
+<script>
+const leagues=[{tab
