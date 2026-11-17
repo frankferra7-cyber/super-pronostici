@@ -44,10 +44,10 @@ footer{max-width:1100px;margin:auto;padding:0 20px 28px;color:#71869a;font-size:
 <main id="appMain" style="display:none">
 <section class="hero"><div class="eyebrow">La tua centrale calcistica</div><h1>Leggi la partita.<br><span style="color:var(--green)">Analizza i numeri.</span></h1><p>Pronostici e statistiche per i principali campionati europei, con analisi dedicate anche ai singoli giocatori.</p></section>
 <nav aria-label="Campionati e sezioni"><button class="active" data-tab="oggi">⚡ Oggi</button><button data-tab="tutte">Tutte</button><button data-tab="seriea">🇮🇹 Serie A</button><button data-tab="epl">🏴 Premier</button><button data-tab="laliga">🇪🇸 La Liga</button><button data-tab="bundesliga">🇩🇪 Bundesliga</button><button data-tab="ligue1">🇫🇷 Ligue 1</button><button data-tab="ucl">⭐ Champions</button><button data-tab="uel">🏆 Europa League</button><button data-tab="giocatori">Giocatori</button><button data-tab="storico">Storico</button></nav>
-<section><div class="section-head"><h2 id="sectionTitle">Panoramica</h2><span id="today"></span></div><div class="grid" id="content"><div class="card empty">Caricamento partite in corso...</div></div><div id="adminRequestsApp" style="display:none;margin-top:16px;padding:16px;background:#101f30;border:1px solid #23384b;border-radius:14px"></div></section>
+<section><div class="section-head"><h2 id="sectionTitle">Panoramica</h2><span id="today"></span></div><div class="grid" id="content"><div class="card empty">La base dell'app è pronta. Il prossimo passaggio sarà collegare una fonte dati calcistica per caricare partite, statistiche e rose aggiornate: non mostriamo pronostici inventati.</div></div><div id="adminRequestsApp" style="display:none;margin-top:16px;padding:16px;background:#101f30;border:1px solid #23384b;border-radius:14px"></div></section>
 <div class="feature-grid"><div class="feature"><div class="ico">🎯</div><strong>Pronostici partita</strong><p>1X2, doppia chance, Over/Under e Gol/No Gol.</p></div><div class="feature"><div class="ico">🟨</div><strong>Possibili ammoniti</strong><p>Analisi individuale basata su falli, cartellini e minutaggio.</p></div><div class="feature"><div class="ico">🥅</div><strong>Tiri in porta</strong><p>Stime sui giocatori e probabilità di almeno un tiro nello specchio.</p></div></div>
 <div class="disclaimer">Le percentuali saranno stime statistiche, non certezze né garanzie di vincita. L'app è pensata per analisi personali e non raccoglie scommesse o denaro.</div>
-</main><footer id="appFooter" style="display:none">SUPER PRONOSTICI · Dati sincronizzati</footer>
+</main><footer id="appFooter" style="display:none">SUPER PRONOSTICI · Versione iniziale · Dati e modelli AI da collegare</footer>
 <script>
 const leagues=[{tab:"seriea",name:"Serie A"},{tab:"epl",name:"Premier League"},{tab:"laliga",name:"La Liga"},{tab:"bundesliga",name:"Bundesliga"},{tab:"ligue1",name:"Ligue 1"},{tab:"ucl",name:"Champions League"},{tab:"uel",name:"Europa League"}];
 let currentTab="oggi", liveData=null;
@@ -65,4 +65,276 @@ function matchCard(m){
 const p=m.prediction;
 const markets=p?'<div class="chips"><span class="chip">1 <b>'+pct(p.oneXTwo.home)+'</b></span><span class="chip">X <b>'+pct(p.oneXTwo.draw)+'</b></span><span class="chip">2 <b>'+pct(p.oneXTwo.away)+'</b></span></div><div class="chips" style="margin-top:7px"><span class="chip">Over 2.5 <b>'+pct(p.over25)+'</b></span><span class="chip">Under 2.5 <b>'+pct(p.under25)+'</b></span><span class="chip">Goal <b>'+pct(p.bothTeamsToScore)+'</b></span></div><div class="note">Doppia chance: 1X '+pct(p.doubleChance["1X"])+' · X2 '+pct(p.doubleChance.X2)+' · 12 '+pct(p.doubleChance["12"])+'</div>':'<div class="note">⚠️ '+esc(m.reason)+'</div>';
 const matchId=esc(m.id);
-return '<article class="card match-card" data-match-id="'+matchId+'"><div class="league">'+esc(m.league)+'</div><div class="match"><div class="team">'+esc(m.home)+'</div><div class="
+return '<article class="card match-card" data-match-id="'+matchId+'"><div class="league">'+esc(m.league)+'</div><div class="match"><div class="team">'+esc(m.home)+'</div><div class="vs">VS</div><div class="team" style="text-align:right">'+esc(m.away)+'</div></div><div class="time">'+dateFms(m.kickoff)+'</div><div class="match-tabs" role="tablist" aria-label="Dettagli partita"><button type="button" class="match-tab active" data-match-tab="partita">Partita</button><button type="button" class="match-tab" data-match-tab="ammoniti">🟨 Ammoniti</button><button type="button" class="match-tab" data-match-tab="tiri">🥅 Tiri in porta</button><button type="button" class="match-tab" data-match-tab="marcatore">🎯 Possibile marcatore</button></div><section class="match-panel" data-match-panel="partita">'+markets+'<div class="note">'+(p?'Stima Poisson · gol attesi '+p.expectedGoals.home+'–'+p.expectedGoals.away+' · esito più probabile '+esc(p.mostLikelyOutcome)+' · risultato indicativo '+esc(p.likelyScore):'Nessuna previsione pubblicata')+'</div></section><section class="match-panel" data-match-panel="ammoniti" hidden><strong>Possibili ammoniti</strong><div class="note">Le statistiche individuali verificate per questa partita non sono ancora disponibili. Non mostriamo nomi o probabilità inventati.</div></section><section class="match-panel" data-match-panel="tiri" hidden><strong>Tiri in porta</strong><div class="note">Le statistiche individuali verificate per questa partita non sono ancora disponibili. Non mostriamo nomi o probabilità inventati.</div></section><section class="match-panel" data-match-panel="marcatore" hidden><strong>Possibile marcatore</strong><div class="note">Le statistiche individuali verificate per questa partita non sono ancora disponibili. Non mostriamo nomi o probabilità inventati.</div></section></article>';
+}
+
+function render(){
+const title=document.getElementById('sectionTitle'),content=document.getElementById('content');
+const adminPanel=document.getElementById('adminRequestsApp');
+const matches=(liveData?.matches||[]).filter(m=>new Date(m.kickoff)>=new Date());
+if(currentTab==="richieste"){
+title.textContent="Richieste di registrazione";
+document.getElementById('today').textContent="Gestione accessi";
+content.innerHTML="";
+adminPanel.style.display="block";
+renderAdminRequests();
+return;
+}
+adminPanel.style.display="none";
+if(currentTab==="giocatori"){title.textContent="Analisi giocatori";content.innerHTML='<div class="card empty">Seleziona una partita e apri le schede dedicate per visualizzare le statistiche individuali.</div>';return;}
+if(currentTab==="storico"){title.textContent="Storico pronostici";content.innerHTML='<div class="card empty">Lo storico si popolerà con le previsioni salvate e i risultati ufficiali nei successivi aggiornamenti.</div>';return;}
+const selected=leagues.find(l=>l.tab===currentTab);
+title.textContent=selected?selected.name:(currentTab==="oggi"?"Partite in programma":"Tutte le partite");
+const list=selected?matches.filter(m=>m.league===selected.name):(currentTab==="oggi"?matches.slice(0,8):matches);
+if(!list.length){content.innerHTML='<div class="card empty">Nessuna partita futura disponibile per questa sezione al momento.</div>';return;}
+if(selected){content.innerHTML=list.map(matchCard).join("");return;}
+const order=leagues.map(l=>l.name);
+const groups=order.map(name=>({name,items:list.filter(m=>m.league===name)})).filter(g=>g.items.length);
+content.innerHTML=groups.map(g=>'<div class="league-heading"><strong>'+esc(g.name)+'</strong><span>'+g.items.length+' partite</span></div>'+g.items.map(matchCard).join("")).join("");
+}
+
+document.getElementById('today').textContent=new Intl.DateTimeFormat('it-IT',{dateStyle:'full'}).format(new Date());
+document.querySelectorAll('nav button').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));b.classList.add('active');currentTab=b.dataset.tab;render();}));
+document.getElementById("adminRequestsTab").addEventListener("click",()=>{currentTab="richieste";render();});
+
+document.getElementById('content').addEventListener('click',e=>{
+const tab=e.target.closest('[data-match-tab]');
+if(!tab)return;
+const card=tab.closest('.match-card');
+if(!card)return;
+card.querySelectorAll('[data-match-tab]').forEach(b=>{const active=b===tab;b.classList.toggle('active',active);b.setAttribute('aria-selected',String(active));});
+const targetPanel=tab.dataset.matchTab;
+card.querySelectorAll('[data-match-panel]').forEach(panel=>{panel.hidden=panel.dataset.matchPanel!==targetPanel;});
+});
+
+async function loadData(){
+try{
+const response=await fetch('./data/fixtures.json?refresh='+Date.now(),{cache:'no-store'});
+if(!response.ok)throw new Error('File dati non disponibile ('+response.status+')');
+const payload=await response.json();
+if(!payload||!Array.isArray(payload.matches)||!payload.generatedAt)throw new Error('Formato dati non valido');
+liveData=payload;render();
+document.getElementById('today').textContent='Aggiornato: '+dateFms(liveData.generatedAt);
+}catch(e){
+console.error('Errore caricamento partite:',e);
+render();
+document.getElementById('today').textContent='Dati non aggiornati';
+document.getElementById('content').innerHTML='<div class="card empty">Partite in aggiornamento. Riprova tra poco.</div>';
+}
+}
+
+async function signOut(){await authClient.auth.signOut();}
+document.getElementById('appLogout').addEventListener('click',signOut);
+document.getElementById('authLogout').addEventListener('click',signOut);
+
+function setAuthMode(mode){
+authMode=mode;
+const password=document.getElementById('authPassword');
+const recovery=mode==="recovery",reset=mode==="reset",signup=mode==="signup";
+document.getElementById('signupFields').style.display=signup?'grid':'none';
+['firstName','lastName','birthDate'].forEach(id=>document.getElementById(id).required=signup);
+document.getElementById('adultDeclaration').required=signup;
+document.getElementById('authTitle').textContent=mode==="login"?"Accedi a Super Pronostici":mode==="signup"?"Richiedi un account":recovery?"Recupera la password":"Imposta una nuova password";
+document.getElementById('authSubmit').textContent=mode==="login"?"Accedi":mode==="signup"?"Invia richiesta":recovery?"Invia link di recupero":"Salva nuova password";
+password.autocomplete=mode==="login"?"current-password":"new-password";
+password.placeholder=reset?"Nuova password (almeno 8 caratteri)":"Password (almeno 8 caratteri)";
+document.getElementById("passwordWrap").style.display=recovery?"none":"flex";
+password.required=!recovery;
+document.getElementById('forgotPassword').style.display=mode==="login"?"block":"none";
+document.getElementById('recoveryBack').style.display=recovery?"block":"none";
+document.getElementById('showLogin').style.display=mode==="signup"?"block":"none";
+document.getElementById('showSignup').style.display=mode==="login"?"block":"none";
+document.getElementById('authMessage').textContent=mode==="login"?"Inserisci le tue credenziali.":mode==="signup"?"La registrazione verrà sottoposta all’approvazione dell’amministratore.":recovery?"Inserisci la tua email: ti invieremo un link per creare una nuova password.":"Inserisci una nuova password di almeno 8 caratteri.";
+}
+
+document.getElementById('showLogin').addEventListener('click',()=>setAuthMode("login"));
+document.getElementById('showSignup').addEventListener('click',()=>setAuthMode("signup"));
+document.getElementById("togglePassword").addEventListener("click",()=>{const field=document.getElementById("authPassword");const visible=field.type==="password";field.type=visible?"text":"password";const button=document.getElementById("togglePassword");button.setAttribute("aria-label",visible?"Nascondi password":"Mostra password");button.setAttribute("aria-pressed",String(visible));button.textContent=visible?"🙈":"👁";});
+document.getElementById('forgotPassword').addEventListener('click',()=>{
+document.getElementById('authTitle').textContent="Recupero password";
+document.getElementById('authMessage').style.display='none';
+document.getElementById('authForm').style.display='none';
+document.getElementById('forgotPassword').style.display='none';
+document.getElementById('showLogin').style.display='none';
+document.getElementById('showSignup').style.display='none';
+document.getElementById('recoveryScreen').style.display='block';
+document.getElementById('recoveryEmail').value=document.getElementById('authEmail').value.trim();
+document.getElementById('recoveryMessage').textContent='';
+document.getElementById('recoveryEmail').focus();
+});
+document.getElementById('recoveryBack').addEventListener('click',()=>{
+document.getElementById('recoveryScreen').style.display='none';
+document.getElementById('authForm').style.display='grid';
+document.getElementById('authMessage').style.display='block';
+document.getElementById('authTitle').textContent="Accedi a Super Pronostici";
+document.getElementById('forgotPassword').style.display='block';
+document.getElementById('showLogin').style.display='block';
+document.getElementById('showSignup').style.display='block';
+setAuthMode("login");
+});
+
+document.getElementById('recoveryForm').addEventListener('submit',async e=>{
+e.preventDefault();
+const email=document.getElementById('recoveryEmail').value.trim().toLowerCase();
+const btn=document.getElementById('recoverySubmit');
+const status=document.getElementById('recoveryMessage');
+btn.disabled=true;
+try{
+const redirectTo=window.location.origin+window.location.pathname;
+const {error}=await authClient.auth.resetPasswordForEmail(email,{redirectTo});
+if(error)throw error;
+status.textContent="Se l’indirizzo è registrato, riceverai un link per reimpostare la password. Controlla anche la cartella spam.";
+}catch(err){status.textContent=err.message||"Impossibile inviare il link di recupero.";}
+finally{btn.disabled=false;}
+});
+
+document.getElementById('authForm').addEventListener('submit',async e=>{
+e.preventDefault();
+const email=document.getElementById('authEmail').value.trim().toLowerCase();
+const password=document.getElementById('authPassword').value;
+const status=document.getElementById('authMessage');
+const btn=document.getElementById('authSubmit');btn.disabled=true;
+try{
+if(authMode==="recovery"){
+const redirectTo=window.location.origin+window.location.pathname;
+const {error}=await authClient.auth.resetPasswordForEmail(email,{redirectTo});
+if(error)throw error;
+status.textContent="Se l’indirizzo è registrato, riceverai un link per reimpostare la password. Controlla anche la cartella spam.";
+}else if(authMode==="reset"){
+if(password.length<8)throw new Error("La nuova password deve contenere almeno 8 caratteri.");
+const {error}=await authClient.auth.updateUser({password});
+if(error)throw error;
+await authClient.auth.signOut();
+setAuthMode("login");
+status.textContent="Password aggiornata. Ora puoi accedere con la nuova password.";
+}else if(authMode==="signup"){
+const firstName=document.getElementById('firstName').value.trim();
+const lastName=document.getElementById('lastName').value.trim();
+const birthDate=document.getElementById('birthDate').value;
+if(!firstName||!lastName||!birthDate||!document.getElementById('adultDeclaration').checked)throw new Error("Compila tutti i dati e conferma di avere almeno 18 anni.");
+const born=new Date(birthDate+'T00:00:00');
+const today=new Date();
+let age=today.getFullYear()-born.getFullYear();
+if(today.getMonth()<born.getMonth()||(today.getMonth()===born.getMonth()&&today.getDate()<born.getDate()))age--;
+if(!Number.isFinite(born.getTime())||born>today||age<18)throw new Error("La registrazione è riservata alle persone maggiorenni (18+).");
+const {data,error}=await authClient.auth.signUp({email,password,options:{data:{first_name:firstName,last_name:lastName,birth_date:birthDate}}});
+if(error)throw error;
+status.textContent=data.session?"Richiesta inviata. Attendi l’approvazione.":"Controlla la tua email per confermare l’indirizzo. Dopo la conferma, attendi l’approvazione.";
+}else{
+const {error}=await authClient.auth.signInWithPassword({email,password});
+if(error)throw error;
+}
+}catch(err){
+console.error("Errore auth:", err);
+status.textContent=err.message||"Operazione non riuscita.";
+}
+finally{btn.disabled=false;}
+});
+
+async function showApprovedApp(user){
+const gate=document.getElementById('authGate');
+const admin=user.email?.toLowerCase()===ADMIN_EMAIL;
+document.getElementById('adminMenuBar').style.display=admin?'flex':'none';
+document.getElementById('adminMenu').style.display=admin?'block':'none';
+if(admin) updatePendingCount();
+const {data:profile,error}=await authClient.from('profiles').select('approved').eq('user_id',user.id).maybeSingle();
+if(error){document.getElementById('authTitle').textContent="Configurazione da completare";document.getElementById('authMessage').textContent="Il sistema autorizzazioni non è ancora configurato nel database. Contatta l’amministratore.";document.getElementById('authLogout').style.display='block';return;}
+if(!admin&&!profile?.approved){
+document.getElementById('authTitle').textContent="Richiesta in attesa";
+document.getElementById('authMessage').textContent="Il tuo account è stato creato. Potrai entrare non appena l’amministratore approverà la richiesta.";
+document.getElementById('authLogout').style.display='block';return;
+}
+gate.style.display='none';
+document.getElementById('appHeader').style.display='flex';
+document.getElementById('appMain').style.display='block';
+document.getElementById('appFooter').style.display='block';
+document.getElementById('accountLabel').textContent=admin?"Amministratore":user.email;
+if(admin) await renderAdminRequests();
+loadData();
+}
+
+async function updatePendingCount(){
+const badge=document.getElementById('pendingRequestsBadge');
+const {data,error}=await authClient.from('profiles').select('user_id').eq('approved',false);
+if(error){badge.style.display='none';return;}
+const count=(data||[]).length;badge.textContent=count>99?'99+':String(count);badge.style.display=count?'inline-block':'none';
+}
+
+async function renderAdminRequests(){
+const panel=document.getElementById('adminRequestsApp');
+const {data:users,error}=await authClient.from('profiles').select('user_id,email,first_name,last_name,birth_date,approved,created_at').order('created_at',{ascending:false});
+if(error){panel.textContent="Impossibile caricare le richieste: "+error.message;return;}
+const pending=(users||[]).filter(u=>!u.approved);
+updatePendingCount();
+panel.innerHTML='<h3>Richieste di accesso ('+pending.length+')</h3>';
+if(!pending.length){panel.innerHTML+='<p style="color:#91a4b8">Nessuna richiesta in attesa.</p>';return;}
+pending.forEach(u=>{
+const row=document.createElement('div');
+row.style.cssText="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-top:1px solid #23384b;flex-wrap:wrap";
+
+const label=document.createElement('span');
+label.textContent=[u.first_name,u.last_name].filter(Boolean).join(' ')+' · '+u.email+(u.birth_date?' · Nascita: '+new Date(u.birth_date+'T00:00:00').toLocaleDateString('it-IT'):'');
+
+const actions=document.createElement('div');
+actions.style.cssText="display:flex;gap:8px";
+
+const approveBtn=document.createElement('button');
+approveBtn.textContent="Approva";
+approveBtn.style.cssText="padding:8px 12px;background:#a3ff35;color:#081321;border:0;border-radius:8px;font-weight:700;cursor:pointer";
+approveBtn.addEventListener('click',async()=>{
+ approveBtn.disabled=true;
+ denyBtn.disabled=true;
+ const {error}=await authClient.from('profiles').update({approved:true}).eq('user_id',u.user_id);
+ if(error){
+  approveBtn.disabled=false;
+  denyBtn.disabled=false;
+  approveBtn.textContent="Errore";
+  return;
+ }
+ row.remove();
+ updatePendingCount();
+});
+
+const denyBtn=document.createElement('button');
+denyBtn.textContent="Nega e cancella";
+denyBtn.style.cssText="padding:8px 12px;background:#ef4444;color:white;border:0;border-radius:8px;font-weight:700;cursor:pointer";
+denyBtn.addEventListener('click',async()=>{
+ if(!confirm("Vuoi eliminare completamente l'utente e liberare l'email?")) return;
+ approveBtn.disabled=true;
+ denyBtn.disabled=true;
+ const {error}=await authClient.rpc('admin_delete_user', { target_user_id: u.user_id });
+ if(error){
+  approveBtn.disabled=false;
+  denyBtn.disabled=false;
+  denyBtn.textContent="Errore";
+  return;
+ }
+ row.remove();
+ updatePendingCount();
+});
+
+actions.append(approveBtn, denyBtn);
+row.append(label, actions);
+panel.append(row);
+});
+}
+
+setAuthMode("login");
+authClient.auth.getSession().then(({data})=>{if(data.session)showApprovedApp(data.session.user);});
+authClient.auth.onAuthStateChange((event,session)=>{
+if(event==="PASSWORD_RECOVERY"){
+document.getElementById('authGate').style.display='block';
+['appHeader','appMain','appFooter'].forEach(id=>document.getElementById(id).style.display='none');
+setAuthMode("reset");
+return;
+}
+if(session)showApprovedApp(session.user);
+else{
+document.getElementById('authGate').style.display='block';
+['appHeader','appMain','appFooter'].forEach(id=>document.getElementById(id).style.display='none');
+document.getElementById('adminRequests').style.display='none';
+setAuthMode("login");
+}
+});
+</script>
+</body></html>
