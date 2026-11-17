@@ -5,6 +5,9 @@ on:
     - cron: '0 6 * * *'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   sync-data:
     runs-on: ubuntu-latest
@@ -23,9 +26,7 @@ jobs:
         run: node scripts/fetch-football.js
 
       - name: Salva e carica le modifiche sul sito
-        run: |
-          git config --global user.name "GitHub Action Bot"
-          git config --global user.email "bot@github.com"
-          git add data/fixtures.json
-          git commit -m "Aggiornamento automatico fixtures e statistiche giocatori" || echo "Nessuna modifica"
-          git push
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "Aggiornamento automatico fixtures e statistiche giocatori"
+          file_pattern: data/fixtures.json
