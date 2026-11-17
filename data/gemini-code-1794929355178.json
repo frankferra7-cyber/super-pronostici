@@ -1,0 +1,36 @@
+{
+  "generatedAt": "2026-11-17T12:00:00Z",
+  "matches": [
+    {
+      "id": "match_test_01",
+      "league": "Serie A",
+      "home": "Inter",
+      "away": "Milan",
+      "kickoff": "2026-11-20T20:45:00Z",
+      "prediction": {
+        "oneXTwo": { "home": 55, "draw": 25, "away": 20 },
+        "over25": 60,
+        "under25": 40,
+        "bothTeamsToScore": 50,
+        "doubleChance": { "1X": 80, "X2": 45, "12": 75 },
+        "expectedGoals": { "home": 1.8, "away": 1.1 },
+        "mostLikelyOutcome": "1",
+        "likelyScore": "2-1"
+      },
+      "playerStats": {
+        "ammoniti": [
+          { "name": "H. Çalhanoğlu", "team": "Inter", "prob": "65%" },
+          { "name": "T. Hernández", "team": "Milan", "prob": "60%" }
+        ],
+        "tiri": [
+          { "name": "L. Martínez", "team": "Inter", "prob": "75%" },
+          { "name": "C. Pulisic", "team": "Milan", "prob": "65%" }
+        ],
+        "marcatori": [
+          { "name": "L. Martínez", "team": "Inter", "prob": "48%" },
+          { "name": "A. Morata", "team": "Milan", "prob": "35%" }
+        ]
+      }
+    }
+  ]
+}
