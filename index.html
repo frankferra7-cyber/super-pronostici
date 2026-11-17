@@ -250,7 +250,8 @@ async function updatePendingCount(){
 }
 async function renderAdminRequests(){
  const panel=document.getElementById('adminRequestsApp');
- const {data:users,error}=await authClient.from('profiles').select('user_id,email,first_name,last_name,birth_date,approved,created_at').order('created_at',{ascending:false});
+ // Esegue la query su profiles senza richiedere colonne specifiche inesistenti o gestendo il fallback
+ const {data:users,error}=await authClient.from('profiles').select('*').order('created_at',{ascending:false});
  if(error){panel.textContent="Impossibile caricare le richieste: "+error.message;return;}
  const pending=(users||[]).filter(u=>!u.approved);
  updatePendingCount();
@@ -258,7 +259,11 @@ async function renderAdminRequests(){
  if(!pending.length){panel.innerHTML+='<p style="color:#91a4b8">Nessuna richiesta in attesa.</p>';return;}
  pending.forEach(u=>{
   const row=document.createElement('div');row.style.cssText="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-top:1px solid #23384b";
-  const label=document.createElement('span');label.textContent=[u.first_name,u.last_name].filter(Boolean).join(' ')+' · '+u.email+(u.birth_date?' · Nascita: '+new Date(u.birth_date+'T00:00:00').toLocaleDateString('it-IT'):'');
+  const fName = u.first_name || u.raw_user_meta_data?.first_name || '';
+  const lName = u.last_name || u.raw_user_meta_data?.last_name || '';
+  const bDate = u.birth_date || u.raw_user_meta_data?.birth_date || '';
+  const label=document.createElement('span');
+  label.textContent=[fName, lName].filter(Boolean).join(' ')+' · '+(u.email || 'Email non disponibile')+(bDate?' · Nascita: '+new Date(bDate+'T00:00:00').toLocaleDateString('it-IT'):'');
   const btn=document.createElement('button');btn.textContent="Approva";btn.style.cssText="padding:8px 12px;background:#a3ff35;color:#081321;border:0;border-radius:8px;font-weight:700";
   btn.addEventListener('click',async()=>{btn.disabled=true;const {error}=await authClient.from('profiles').update({approved:true}).eq('user_id',u.user_id);if(error){btn.disabled=false;btn.textContent="Errore";return;}row.remove();updatePendingCount();});
   row.append(label,btn);panel.append(row);
