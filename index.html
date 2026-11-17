@@ -256,11 +256,53 @@ updatePendingCount();
 panel.innerHTML='<h3>Richieste di accesso ('+pending.length+')</h3>';
 if(!pending.length){panel.innerHTML+='<p style="color:#91a4b8">Nessuna richiesta in attesa.</p>';return;}
 pending.forEach(u=>{
-const row=document.createElement('div');row.style.cssText="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-top:1px solid #23384b";
-const label=document.createElement('span');label.textContent=[u.first_name,u.last_name].filter(Boolean).join(' ')+' · '+u.email+(u.birth_date?' · Nascita: '+new Date(u.birth_date+'T00:00:00').toLocaleDateString('it-IT'):'');
-const btn=document.createElement('button');btn.textContent="Approva";btn.style.cssText="padding:8px 12px;background:#a3ff35;color:#081321;border:0;border-radius:8px;font-weight:700";
-btn.addEventListener('click',async()=>{btn.disabled=true;const {error}=await authClient.from('profiles').update({approved:true}).eq('user_id',u.user_id);if(error){btn.disabled=false;btn.textContent="Errore";return;}row.remove();updatePendingCount();});
-row.append(label,btn);panel.append(row);
+const row=document.createElement('div');
+row.style.cssText="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 0;border-top:1px solid #23384b;flex-wrap:wrap";
+
+const label=document.createElement('span');
+label.textContent=[u.first_name,u.last_name].filter(Boolean).join(' ')+' · '+u.email+(u.birth_date?' · Nascita: '+new Date(u.birth_date+'T00:00:00').toLocaleDateString('it-IT'):'');
+
+const actions=document.createElement('div');
+actions.style.cssText="display:flex;gap:8px";
+
+const approveBtn=document.createElement('button');
+approveBtn.textContent="Approva";
+approveBtn.style.cssText="padding:8px 12px;background:#a3ff35;color:#081321;border:0;border-radius:8px;font-weight:700;cursor:pointer";
+approveBtn.addEventListener('click',async()=>{
+ approveBtn.disabled=true;
+ denyBtn.disabled=true;
+ const {error}=await authClient.from('profiles').update({approved:true}).eq('user_id',u.user_id);
+ if(error){
+  approveBtn.disabled=false;
+  denyBtn.disabled=false;
+  approveBtn.textContent="Errore";
+  return;
+ }
+ row.remove();
+ updatePendingCount();
+});
+
+const denyBtn=document.createElement('button');
+denyBtn.textContent="Nega accesso";
+denyBtn.style.cssText="padding:8px 12px;background:#ef4444;color:white;border:0;border-radius:8px;font-weight:700;cursor:pointer";
+denyBtn.addEventListener('click',async()=>{
+ if(!confirm("Vuoi davvero negare ed eliminare questa richiesta?")) return;
+ approveBtn.disabled=true;
+ denyBtn.disabled=true;
+ const {error}=await authClient.from('profiles').delete().eq('user_id',u.user_id);
+ if(error){
+  approveBtn.disabled=false;
+  denyBtn.disabled=false;
+  denyBtn.textContent="Errore";
+  return;
+ }
+ row.remove();
+ updatePendingCount();
+});
+
+actions.append(approveBtn, denyBtn);
+row.append(label, actions);
+panel.append(row);
 });
 }
 setAuthMode("login");
