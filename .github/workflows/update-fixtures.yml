@@ -2,8 +2,8 @@ name: Aggiorna Partite e Statistiche
 
 on:
   schedule:
-    - cron: '0 6 * * *' # Si attiva ogni giorno alle 06:00 UTC
-  workflow_dispatch:     # Ti permette di avviarlo a mano quando vuoi da GitHub
+    - cron: '0 6 * * *'
+  workflow_dispatch:
 
 jobs:
   sync-data:
