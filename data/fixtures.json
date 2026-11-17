@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-17T13:18:57.871Z",
+  "generatedAt": "2026-11-17T19:11:01.511Z",
   "season": 2026,
   "provider": "API Ninjas",
   "leagues": [
@@ -21,7 +21,7 @@
       "id": "laliga",
       "name": "La Liga",
       "seasonMatches": 380,
-      "finished": 89,
+      "finished": 88,
       "upcoming": 260
     },
     {
@@ -35,7 +35,7 @@
       "id": "ligue1",
       "name": "Ligue 1",
       "seasonMatches": 306,
-      "finished": 72,
+      "finished": 71,
       "upcoming": 216
     },
     {
@@ -1072,28 +1072,28 @@
       "status": "scheduled",
       "prediction": {
         "expectedGoals": {
-          "home": 2,
-          "away": 0.46
+          "home": 2.17,
+          "away": 0.5
         },
         "oneXTwo": {
-          "home": 74,
-          "draw": 18,
+          "home": 76,
+          "draw": 17,
           "away": 7
         },
         "doubleChance": {
-          "12": 82,
+          "12": 83,
           "1X": 93,
-          "X2": 26
+          "X2": 24
         },
-        "over25": 45,
-        "under25": 55,
-        "bothTeamsToScore": 32,
+        "over25": 50,
+        "under25": 50,
+        "bothTeamsToScore": 35,
         "goalNoGoal": {
-          "goal": 32,
-          "noGoal": 68
+          "goal": 35,
+          "noGoal": 65
         },
         "mostLikelyOutcome": "1",
-        "likelyScore": "1-0"
+        "likelyScore": "2-0"
       },
       "reason": "Stima Poisson su medie casa/trasferta delle ultime partite disponibili.",
       "playerMarketsAvailable": false
