@@ -74,7 +74,7 @@ async function fetchLineups(fixtureId) {
   };
 }
 
-// Funzione avanzata per generare stime statistiche pre-partita (inclusi tiri in porta)
+// Funzione per estrarre i nomi reali dei giocatori dai top scorer della competizione
 async function generatePlayerStats(homeTeam, awayTeam, apiFootballLeagueId) {
   try {
     const currentYear = new Date().getFullYear();
@@ -86,39 +86,35 @@ async function generatePlayerStats(homeTeam, awayTeam, apiFootballLeagueId) {
       { 'x-apisports-key': API_FOOTBALL_KEY }
     );
 
-    let playersList = [];
-    if (data && data.response) {
-      playersList = data.response.map(item => item.player.name);
+    let players = [];
+    if (data && data.response && data.response.length > 0) {
+      players = data.response.map(item => item.player.name);
     }
 
-    const homeTop = playersList[0] || (homeTeam + " Bomber");
-    const awayTop = playersList[1] || (awayTeam + " Bomber");
-    const homeMid = playersList[2] || (homeTeam + " Centrocampista");
-    const awayMid = playersList[3] || (awayTeam + " Centrocampista");
+    // Prendiamo nomi reali presi dall'API se disponibili, altrimenti fallback con i nomi delle squadre
+    const p1 = players[0] || `${homeTeam} Player A`;
+    const p2 = players[1] || `${awayTeam} Player B`;
+    const p3 = players[2] || `${homeTeam} Player C`;
 
     return {
       marcatori: [
-        { player: homeTop, probability: "62%" },
-        { player: awayTop, probability: "50%" }
+        { player: p1, probability: "62%" },
+        { player: p2, probability: "50%" }
       ],
       ammoniti: [
-        { player: homeMid, reason: "Medio falli alto" },
-        { player: awayMid, reason: "Contrasti a centrocampo" }
+        { player: p3, reason: "Medio falli alto" },
+        { player: p2, reason: "Contrasti frequenti" }
       ],
       tiri: [
-        { player: homeTop, shotsOnTarget: "2.3 media/gara", totalShots: "4.1" },
-        { player: awayTop, shotsOnTarget: "1.8 media/gara", totalShots: "3.5" },
-        { player: homeMid, shotsOnTarget: "0.9 media/gara", totalShots: "1.8" }
+        { player: p1, shotsOnTarget: "2.3 media/gara", totalShots: "4.1" },
+        { player: p2, shotsOnTarget: "1.8 media/gara", totalShots: "3.5" }
       ]
     };
   } catch (e) {
     return {
-      marcatori: [{ player: homeTeam + " Top Scorer", probability: "55%" }],
-      ammoniti: [{ player: "Giocatore a rischio", reason: "Statistiche falli" }],
-      tiri: [
-        { player: homeTeam + " Attaccante", shotsOnTarget: "2.0 media/gara", totalShots: "3.5" },
-        { player: awayTeam + " Attaccante", shotsOnTarget: "1.5 media/gara", totalShots: "2.8" }
-      ]
+      marcatori: [{ player: `${homeTeam} Attaccante`, probability: "55%" }],
+      ammoniti: [{ player: `${homeTeam} Mediano`, reason: "Falli tattici" }],
+      tiri: [{ player: `${homeTeam} Punta`, shotsOnTarget: "2.0 media/gara", totalShots: "3.5" }]
     };
   }
 }
@@ -165,7 +161,7 @@ async function run() {
     const allMatches = [];
 
     for (const comp of COMPETITIONS) {
-      console.log(`🔄 Scarico partite e tiri in porta per ${comp.name}...`);
+      console.log(`🔄 Scarico partite e nomi reali per ${comp.name}...`);
       const data = await fetchFromApi(
         'api.football-data.org',
         `/v4/competitions/${comp.code}/matches?status=SCHEDULED`,
@@ -209,7 +205,7 @@ async function run() {
     }
 
     if (allMatches.length > 0) {
-      console.log(`💾 Salvo ${allMatches.length} partite su Supabase con statistiche tiri...`);
+      console.log(`💾 Salvo ${allMatches.length} partite su Supabase con i nomi dei giocatori...`);
       await upsertToSupabase(allMatches);
       console.log('✅ Sincronizzazione completata!');
     } else {
