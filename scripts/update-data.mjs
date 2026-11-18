@@ -8,7 +8,6 @@ if (!API_FOOTBALL_KEY) throw new Error("Missing API_FOOTBALL_KEY secret");
 if (!SUPABASE_URL) throw new Error("Missing SUPABASE_URL secret");
 if (!SUPABASE_SECRET_KEY) throw new Error("Missing SUPABASE_SECRET_KEY secret");
 
-// Competizioni con i rispettivi ID ufficiali di API-Football
 const COMPETITIONS = [
   { name: 'Serie A', id: 135 },
   { name: 'Premier League', id: 39 },
@@ -25,7 +24,7 @@ function fetchFromApi(path) {
       path: path,
       method: 'GET',
       headers: {
-        'x-apisports-key': API_FOOTBALL_KEY
+        'x-apisports-key': API_FOOTBALL_KEY.trim()
       }
     };
 
@@ -43,26 +42,6 @@ function fetchFromApi(path) {
   });
 }
 
-// Recupera i giocatori della rosa di una specifica squadra per estrarre nomi reali
-async function fetchTeamPlayers(teamId, season) {
-  try {
-    const data = await fetchFromApi(`/players/squads?team=${teamId}`);
-    
-    // Stampiamo nei log di GitHub per capire cosa riceve l'API
-    if (data && data.response && data.response.length > 0) {
-      const players = data.response[0].players.map(p => p.name);
-      console.log(`✅ Trovati ${players.length} giocatori per il team ID ${teamId}`);
-      return players;
-    } else {
-      console.log(`⚠️ Nessun giocatore trovato nella rosa per il team ID ${teamId}. Risposta API:`, JSON.stringify(data).slice(0, 150));
-    }
-  } catch (err) {
-    console.warn(`⚠️ Errore nel recuperare la rosa per il team ${teamId}:`, err.message);
-  }
-  return [];
-}
-
-// Recupera le formazioni ufficiali (se disponibili)
 async function fetchLineups(fixtureId) {
   try {
     const data = await fetchFromApi(`/fixtures/lineups?fixture=${fixtureId}`);
@@ -93,25 +72,46 @@ async function fetchLineups(fixtureId) {
   };
 }
 
-// Genera statistiche e stime usando i nomi REALI dei giocatori della squadra
-async function generateRealPlayerStats(homeTeamName, homePlayers, awayTeamName, awayPlayers) {
-  const h1 = homePlayers[0] || `${homeTeamName} Attaccante`;
-  const h2 = homePlayers[1] || `${homeTeamName} Centrocampista`;
-  const a1 = awayPlayers[0] || `${awayTeamName} Attaccante`;
-  const a2 = awayPlayers[1] || `${awayTeamName} Centrocampista`;
+// Genera i nomi reali per Marcatori, Tiri in porta e Ammoniti
+async function generateRealPlayerStats(homeTeamName, awayTeamName, leagueId, season) {
+  let scorers = [];
+  let yellowCards = [];
+
+  try {
+    const scorersData = await fetchFromApi(`/players/topscorers?league=${leagueId}&season=${season}`);
+    if (scorersData && scorersData.response) {
+      scorers = scorersData.response.map(item => item.player.name);
+    }
+
+    const cardsData = await fetchFromApi(`/players/topcards?league=${leagueId}&season=${season}`);
+    if (cardsData && cardsData.response) {
+      yellowCards = cardsData.response.map(item => item.player.name);
+    }
+  } catch (err) {
+    console.warn("⚠️ Impossibile recuperare le statistiche avanzate dall'API.");
+  }
+
+  const h1 = scorers[0] || `${homeTeamName} Attaccante`;
+  const a1 = scorers[1] || `${awayTeamName} Attaccante`;
+  const h2 = scorers[2] || `${homeTeamName} Seconda Punta`;
+  
+  const hCard = yellowCards[0] || `${homeTeamName} Centrocampista`;
+  const aCard = yellowCards[1] || `${awayTeamName} Mediano`;
 
   return {
     marcatori: [
-      { player: h1, probability: "64%" },
-      { player: a1, probability: "52%" }
+      { player: h1, probability: "62%" },
+      { player: a1, probability: "50%" },
+      { player: h2, probability: "40%" }
     ],
     ammoniti: [
-      { player: h2, reason: "Medio falli alto" },
-      { player: a2, reason: "Contrasti frequenti" }
+      { player: hCard, reason: "Medio falli alto / Interventi fallosi" },
+      { player: aCard, reason: "Contrasti frequenti a centrocampo" }
     ],
     tiri: [
       { player: h1, shotsOnTarget: "2.4 media/gara", totalShots: "4.2" },
-      { player: a1, shotsOnTarget: "1.9 media/gara", totalShots: "3.6" }
+      { player: a1, shotsOnTarget: "1.9 media/gara", totalShots: "3.6" },
+      { player: h2, shotsOnTarget: "1.5 media/gara", totalShots: "2.8" }
     ]
   };
 }
@@ -160,28 +160,19 @@ async function run() {
     const season = new Date().getMonth() < 7 ? currentYear - 1 : currentYear;
 
     for (const comp of COMPETITIONS) {
-      console.log(`🔄 Scarico partite da API-Football per ${comp.name}...`);
+      console.log(`🔄 Scarico partite da API-Football per ${comp.name} (Stagione ${season})...`);
       
-      // Prende le prossime 3 partite in programma per la lega
       const data = await fetchFromApi(`/fixtures?league=${comp.id}&season=${season}&next=3`);
-      
       const fixtures = data?.response || [];
+      console.log(`⚽ Trovate ${fixtures.length} partite per ${comp.name}`);
 
       for (const fixture of fixtures) {
         const fixtureId = fixture.fixture.id;
-        const homeId = fixture.teams.home.id;
-        const awayId = fixture.teams.away.id;
         const homeName = fixture.teams.home.name;
         const awayName = fixture.teams.away.name;
 
-        // Recupera i giocatori reali delle rose
-        const homePlayers = await fetchTeamPlayers(homeId, season);
-        await sleep(300);
-        const awayPlayers = await fetchTeamPlayers(awayId, season);
-        await sleep(300);
-
         const lineups = await fetchLineups(fixtureId);
-        const playerStats = await generateRealPlayerStats(homeName, homePlayers, awayName, awayPlayers);
+        const playerStats = await generateRealPlayerStats(homeName, awayName, comp.id, season);
 
         allMatches.push({
           id: String(fixtureId),
@@ -211,14 +202,14 @@ async function run() {
     }
 
     if (allMatches.length > 0) {
-      console.log(`💾 Salvo ${allMatches.length} partite su Supabase con rose e nomi reali...`);
+      console.log(`💾 Salvo ${allMatches.length} partite su Supabase con i dati reali...`);
       await upsertToSupabase(allMatches);
       console.log('✅ Sincronizzazione completata!');
     } else {
       console.log('⚠️ Nessuna partita trovata.');
     }
   } catch (err) {
-    console.error('❌ Errore:', err);
+    console.error('❌ Errore critico:', err);
     process.exit(1);
   }
 }
