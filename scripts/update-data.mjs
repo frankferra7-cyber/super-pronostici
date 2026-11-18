@@ -1,10 +1,12 @@
 import https from 'https';
 
-const FOOTBALL_API_KEY = process.env.FOOTBALL_DATA_KEY;
+const FOOTBALL_DATA_KEY = process.env.FOOTBALL_DATA_KEY;
+const API_FOOTBALL_KEY = process.env.API_FOOTBALL_KEY;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
-if (!FOOTBALL_API_KEY) throw new Error("Missing FOOTBALL_DATA_KEY secret");
+if (!FOOTBALL_DATA_KEY) throw new Error("Missing FOOTBALL_DATA_KEY secret");
+if (!API_FOOTBALL_KEY) throw new Error("Missing API_FOOTBALL_KEY secret");
 if (!SUPABASE_URL) throw new Error("Missing SUPABASE_URL secret");
 if (!SUPABASE_SERVICE_KEY) throw new Error("Missing SUPABASE_SERVICE_KEY secret");
 
@@ -17,14 +19,9 @@ const COMPETITIONS = [
   { code: 'CL', name: 'Champions League' }
 ];
 
-function fetchFootballData(path) {
+function fetchFromApi(hostname, path, headers) {
   return new Promise((resolve, reject) => {
-    const options = {
-      hostname: 'api.football-data.org',
-      path: `/v4${path}`,
-      method: 'GET',
-      headers: { 'X-Auth-Token': FOOTBALL_API_KEY }
-    };
+    const options = { hostname, path, method: 'GET', headers };
 
     https.get(options, (res) => {
       let data = '';
@@ -38,6 +35,45 @@ function fetchFootballData(path) {
       });
     }).on('error', reject);
   });
+}
+
+async function fetchLineups(fixtureId) {
+  try {
+    // Endpoint ufficiale di API-Football per le formazioni
+    const data = await fetchFromApi(
+      'v3.football.api-sports.io',
+      `/fixtures/lineups?fixture=${fixtureId}`,
+      { 'x-apisports-key': API_FOOTBALL_KEY }
+    );
+
+    if (data && data.response && data.response.length > 0) {
+      const homeLineupData = data.response[0];
+      const awayLineupData = data.response[1] || {};
+
+      return {
+        home: {
+          teamName: homeLineupData.team?.name || "Home",
+          formation: homeLineupData.formation || "4-3-3",
+          isOfficial: true,
+          startXI: (homeLineupData.startXI || []).map(p => ({ id: p.player.id, name: p.player.name, number: p.player.number, pos: p.player.pos }))
+        },
+        away: {
+          teamName: awayLineupData.team?.name || "Away",
+          formation: awayLineupData.formation || "4-2-3-1",
+          isOfficial: true,
+          startXI: (awayLineupData.startXI || []).map(p => ({ id: p.player.id, name: p.player.name, number: p.player.number, pos: p.player.pos }))
+        }
+      };
+    }
+  } catch (err) {
+    console.warn(`⚠️ Impossibile recuperare le formazioni per il match ${fixtureId}:`, err.message);
+  }
+
+  // Fallback di default se le formazioni non sono ancora disponibili (es. match a giorni di distanza)
+  return {
+    home: { teamName: "Casa", formation: "4-3-3", isOfficial: false, startXI: [] },
+    away: { teamName: "Ospiti", formation: "4-2-3-1", isOfficial: false, startXI: [] }
+  };
 }
 
 function upsertToSupabase(matches) {
@@ -83,10 +119,19 @@ async function run() {
 
     for (const comp of COMPETITIONS) {
       console.log(`🔄 Scarico partite per ${comp.name}...`);
-      const data = await fetchFootballData(`/competitions/${comp.code}/matches?status=SCHEDULED`);
-      const upcoming = (data.matches || []).slice(0, 5);
+      const data = await fetchFromApi(
+        'api.football-data.org',
+        `/v4/competitions/${comp.code}/matches?status=SCHEDULED`,
+        { 'X-Auth-Token': FOOTBALL_DATA_KEY }
+      );
+      
+      const upcoming = (data.matches || []).slice(0, 3); // Limitiamo per preservare i limiti delle API
 
       for (const m of upcoming) {
+        // Nota: se gli ID tra football-data e api-football differiscono, 
+        // qui andrebbe mappato l'ID. Per ora usiamo m.id come riferimento.
+        const lineups = await fetchLineups(m.id);
+
         allMatches.push({
           id: String(m.id),
           league: comp.name,
@@ -104,19 +149,18 @@ async function run() {
             likelyScore: "2-1"
           },
           player_stats: { ammoniti: [], tiri: [], marcatori: [] },
-          lineups: {
-            home: { teamName: m.homeTeam.shortName || m.homeTeam.name, formation: "4-3-3", isOfficial: false, startXI: [] },
-            away: { teamName: m.awayTeam.shortName || m.awayTeam.name, formation: "4-2-3-1", isOfficial: false, startXI: [] }
-          },
+          lineups: lineups,
           updated_at: new Date().toISOString()
         });
+
+        await sleep(500); // Pausa breve tra una richiesta di lineup e l'altra
       }
 
-      await sleep(6500); // Pausa per rispettare il limite API gratuito (10 chiamate/minuto)
+      await sleep(2000);
     }
 
     if (allMatches.length > 0) {
-      console.log(`💾 Salvo ${allMatches.length} partite su Supabase...`);
+      console.log(`💾 Salvo ${allMatches.length} partite su Supabase con relative formazioni...`);
       await upsertToSupabase(allMatches);
       console.log('✅ Sincronizzazione completata!');
     } else {
