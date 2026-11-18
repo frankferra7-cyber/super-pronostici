@@ -163,12 +163,18 @@ function upsertToSupabase(matches) {
       let responseData = '';
       res.on('data', chunk => responseData += chunk);
       res.on('end', () => {
+        console.log(`Status code Supabase: ${res.statusCode}`);
+        console.log(`Risposta Supabase: ${responseData}`);
         if (res.statusCode >= 200 && res.statusCode < 300) resolve(responseData);
         else reject(new Error(`Errore Supabase (${res.statusCode}): ${responseData}`));
       });
     });
 
-    req.on('error', reject);
+    req.on('error', (err) => {
+      console.error('Errore di rete verso Supabase:', err);
+      reject(err);
+    });
+
     req.write(body);
     req.end();
   });
