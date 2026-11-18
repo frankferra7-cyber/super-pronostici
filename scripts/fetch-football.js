@@ -1,5 +1,5 @@
 const fs = require('fs');
-const https = https = require('https');
+const https = require('https');
 
 const API_KEY = process.env.RAPIDAPI_KEY;
 const API_HOST = 'api-football-v1.p.rapidapi.com';
