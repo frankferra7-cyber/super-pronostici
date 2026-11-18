@@ -53,57 +53,6 @@ async function getSeasonPlayers(teamId, leagueId, season) {
   return allPlayers;
 }
 
-// Funzione per generare una probabile formazione basata sulle presenze stagionali
-function generateProbableLineup(playersList, leagueId, teamName) {
-  const gks = [];
-  const defs = [];
-  const mids = [];
-  const atts = [];
-
-  for (const entry of playersList) {
-    if (!entry.statistics || entry.statistics.length === 0) continue;
-    const stats = entry.statistics.find(s => s.league && s.league.id === leagueId);
-    if (!stats) continue;
-
-    const apps = stats.games?.appearences || 0;
-    if (apps === 0) continue;
-
-    const playerInfo = {
-      name: entry.player.name,
-      number: stats.games.shirt_number || "?",
-      pos: stats.games.position || "M",
-      apps: apps
-    };
-
-    if (playerInfo.pos === 'G') gks.push(playerInfo);
-    else if (playerInfo.pos === 'D') defs.push(playerInfo);
-    else if (playerInfo.pos === 'M') mids.push(playerInfo);
-    else if (playerInfo.pos === 'A') atts.push(playerInfo);
-  }
-
-  // Ordiniamo per presenze decrescenti
-  gks.sort((a, b) => b.apps - a.apps);
-  defs.sort((a, b) => b.apps - a.apps);
-  mids.sort((a, b) => b.apps - a.apps);
-  atts.sort((a, b) => b.apps - a.apps);
-
-  // Selezioniamo un 4-3-3 / 4-4-2 standard probabilistico
-  const startXI = [
-    ...(gks.slice(0, 1)),
-    ...(defs.slice(0, 4)),
-    ...(mids.slice(0, 3)),
-    ...(atts.slice(0, 3))
-  ];
-
-  return {
-    teamName: teamName,
-    formation: "Probabile (Stagionale)",
-    coach: "Analisi Statistica",
-    isOfficial: false,
-    startXI: startXI.map(p => ({ name: p.name, number: p.number, pos: p.pos }))
-  };
-}
-
 async function run() {
   try {
     // 135: Serie A, 39: Premier, 61: Ligue 1, 2: Champions, 140: Liga, 78: Bundesliga, 3: Europa League
@@ -113,66 +62,19 @@ async function run() {
 
     for (const leagueId of LEAGUES) {
       console.log(`🔄 Scarico prossime partite per Lega ID ${leagueId} (Stagione ${SEASON})...`);
+      // Usiamo next=2 per ogni campionato per restare nel limite delle 100 chiamate giornaliere gratuite
       const fixturesRaw = await callApi(`/fixtures?league=${leagueId}&season=${SEASON}&next=2`);
       console.log(`📊 Partite trovate per Lega ${leagueId}: ${fixturesRaw.length}`);
 
       for (const f of fixturesRaw) {
-        const fixtureId = f.fixture.id;
         const homeTeam = f.teams.home;
         const awayTeam = f.teams.away;
 
-        console.log(`🔎 Analizzo match: ${homeTeam.name} vs ${awayTeam.name}`);
+        console.log(`🔎 Analizzo statistiche per: ${homeTeam.name} vs ${awayTeam.name}`);
 
-        // 1. Recuperiamo le formazioni dall'API ufficiale
-        const lineupsRaw = await callApi(`/fixtures/lineups?fixture=${fixtureId}`);
-        let lineupsData = { home: null, away: null };
-
-        let hasOfficialHome = false;
-        let hasOfficialAway = false;
-
-        if (lineupsRaw && lineupsRaw.length > 0) {
-          for (const teamLineup of lineupsRaw) {
-            const isHome = teamLineup.team.id === homeTeam.id;
-            const formattedLineup = {
-              teamName: teamLineup.team.name,
-              formation: teamLineup.formation || "4-4-2",
-              coach: teamLineup.coach?.name || "N/D",
-              isOfficial: true,
-              startXI: (teamLineup.startXI || []).map(p => ({
-                name: p.player.name,
-                number: p.player.number,
-                pos: p.player.pos
-              })),
-              substitutes: (teamLineup.substitutes || []).map(p => ({
-                name: p.player.name,
-                number: p.player.number,
-                pos: p.player.pos
-              }))
-            };
-
-            if (isHome) {
-              lineupsData.home = formattedLineup;
-              hasOfficialHome = true;
-            } else {
-              lineupsData.away = formattedLineup;
-              hasOfficialAway = true;
-            }
-          }
-        }
-
-        // 2. Recuperiamo le statistiche stagionali dei giocatori (per pronostici e per generare i probabili se non ci sono gli ufficiali)
         const homePlayers = await getSeasonPlayers(homeTeam.id, leagueId, SEASON);
         const awayPlayers = await getSeasonPlayers(awayTeam.id, leagueId, SEASON);
 
-        // Se non ci sono formazioni ufficiali, generiamo quelle probabili basate sulle presenze
-        if (!hasOfficialHome) {
-          lineupsData.home = generateProbableLineup(homePlayers, leagueId, homeTeam.name);
-        }
-        if (!hasOfficialAway) {
-          lineupsData.away = generateProbableLineup(awayPlayers, leagueId, awayTeam.name);
-        }
-
-        // 3. Calcolo ammoniti, tiri e marcatori
         const combinedPlayers = [
           ...homePlayers.map(item => ({ ...item, teamName: homeTeam.name })),
           ...awayPlayers.map(item => ({ ...item, teamName: awayTeam.name }))
@@ -230,7 +132,7 @@ async function run() {
         marcatoriList.sort((a, b) => b.count - a.count);
 
         matches.push({
-          id: String(fixtureId),
+          id: String(f.fixture.id),
           league: f.league.name,
           home: homeTeam.name,
           away: awayTeam.name,
@@ -245,7 +147,6 @@ async function run() {
             mostLikelyOutcome: "1",
             likelyScore: "1-0"
           },
-          lineups: lineupsData, // Contiene la probabile o l'ufficiale con il flag isOfficial (true/false)
           playerStats: {
             ammoniti: ammonitiList.slice(0, 4).map(({ count, ...rest }) => rest),
             tiri: tiriList.slice(0, 4).map(({ count, ...rest }) => rest),
@@ -262,7 +163,7 @@ async function run() {
     }
 
     fs.writeFileSync('./data/fixtures.json', JSON.stringify(payload, null, 2));
-    console.log(`✅ File fixtures.json generato con formazioni ibride (probabili/ufficiali)!`);
+    console.log(`✅ File fixtures.json generato con successo (inclusa l'Europa League)!`);
   } catch (err) {
     console.error("❌ Errore:", err);
     process.exit(1);
