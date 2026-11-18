@@ -1,21 +1,10 @@
-name: Update Football Data
-
-on:
-  schedule:
-    - cron: '0 8 * * *' # Si avvia in automatico ogni giorno alle 08:00 UTC
-  workflow_dispatch: # Ti permette di cliccare "Run workflow" manualmente da GitHub
-
-jobs:
-  sync:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
+- name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
 
       - name: Fetch football data and sync to Supabase
         env:
