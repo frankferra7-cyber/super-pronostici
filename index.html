@@ -66,8 +66,8 @@ const p=m.prediction;
 const markets=p?'<div class="chips"><span class="chip">1 <b>'+pct(p.oneXTwo.home)+'</b></span><span class="chip">X <b>'+pct(p.oneXTwo.draw)+'</b></span><span class="chip">2 <b>'+pct(p.oneXTwo.away)+'</b></span></div><div class="chips" style="margin-top:7px"><span class="chip">Over 2.5 <b>'+pct(p.over25)+'</b></span><span class="chip">Under 2.5 <b>'+pct(p.under25)+'</b></span><span class="chip">Goal <b>'+pct(p.bothTeamsToScore)+'</b></span></div><div class="note">Doppia chance: 1X '+pct(p.doubleChance["1X"])+' · X2 '+pct(p.doubleChance.X2)+' · 12 '+pct(p.doubleChance["12"])+'</div>':'<div class="note">⚠️ '+esc(m.reason)+'</div>';
 const matchId=esc(m.id);
 
-// Renderizziamo i dati statistici individuali dei giocatori se presenti nel JSON
-const stats=m.playerStats||{};
+// Renderizziamo i dati statistici individuali dei giocatori se presenti nel database
+const stats=m.player_stats||m.playerStats||{};
 const renderList=(items,formatter)=>{
   if(!items||!items.length)return '<div class="note">Dati non ancora disponibili.</div>';
   return '<ul style="list-style:none;padding:0;margin:0">'+items.map(formatter).join('')+'</ul>';
@@ -150,17 +150,26 @@ card.querySelectorAll('[data-match-panel]').forEach(panel=>{panel.hidden=panel.d
 
 async function loadData(){
 try{
-const response=await fetch('./data/fixtures.json?refresh='+Date.now(),{cache:'no-store'});
-if(!response.ok)throw new Error('File dati non disponibile ('+response.status+')');
-const payload=await response.json();
-if(!payload||!Array.isArray(payload.matches)||!payload.generatedAt)throw new Error('Formato dati non valido');
-liveData=payload;render();
-document.getElementById('today').textContent='Aggiornato: '+dateFms(liveData.generatedAt);
-}catch(e){
-console.error('Errore caricamento partite:',e);
+// Carichiamo direttamente dalla tabella matches di Supabase
+const { data, error } = await authClient
+  .from('matches')
+  .select('*')
+  .order('kickoff', { ascending: true });
+
+if(error) throw error;
+
+liveData={
+  generatedAt: new Date().toISOString(),
+  matches: data || []
+};
+
 render();
-document.getElementById('today').textContent='Dati non aggiornati';
-document.getElementById('content').innerHTML='<div class="card empty">Partite in aggiornamento. Riprova tra poco.</div>';
+document.getElementById('today').textContent='Aggiornato da Supabase';
+}catch(e){
+console.error('Errore caricamento partite da Supabase:',e);
+render();
+document.getElementById('today').textContent='Dati non disponibili';
+document.getElementById('content').innerHTML='<div class="card empty">Nessuna partita trovata nel database di Supabase.</div>';
 }
 }
 
