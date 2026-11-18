@@ -47,11 +47,17 @@ function fetchFromApi(path) {
 async function fetchTeamPlayers(teamId, season) {
   try {
     const data = await fetchFromApi(`/players/squads?team=${teamId}`);
+    
+    // Stampiamo nei log di GitHub per capire cosa riceve l'API
     if (data && data.response && data.response.length > 0) {
-      return data.response[0].players.map(p => p.name);
+      const players = data.response[0].players.map(p => p.name);
+      console.log(`✅ Trovati ${players.length} giocatori per il team ID ${teamId}`);
+      return players;
+    } else {
+      console.log(`⚠️ Nessun giocatore trovato nella rosa per il team ID ${teamId}. Risposta API:`, JSON.stringify(data).slice(0, 150));
     }
   } catch (err) {
-    console.warn(`⚠️ Impossibile recuperare la rosa per il team ${teamId}`);
+    console.warn(`⚠️ Errore nel recuperare la rosa per il team ${teamId}:`, err.message);
   }
   return [];
 }
