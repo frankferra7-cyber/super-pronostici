@@ -2,7 +2,6 @@ async function generateFixturesFile() {
   try {
     console.log("🔄 Connessione ad API-Football per i prossimi 7 giorni...");
     
-    // Calcoliamo la data di oggi e quella tra 7 giorni nel futuro
     const todayObj = new Date();
     const futureObj = new Date();
     futureObj.setDate(todayObj.getDate() + 7);
@@ -12,7 +11,7 @@ async function generateFixturesFile() {
 
     console.log(`📅 Cerco partite in programma da ${today} a ${futureDate}`);
     
-    // Chiediamo all'API le partite da oggi ai prossimi 7 giorni
+    // Intervallo di 7 giorni nel futuro per i campionati selezionati
     const fixturesRaw = await callApi(`/fixtures?from=${today}&to=${futureDate}`);
     const matches = [];
 
@@ -27,7 +26,6 @@ async function generateFixturesFile() {
       const awayTeam = f.teams.away.name;
       const kickoff = f.fixture.date;
 
-      // Nota: per le partite future le statistiche live (ammoniti, tiri, marcatori) saranno vuote finché non iniziano
       const playersStatsRaw = await callApi(`/fixtures/players?fixture=${fixtureId}`);
       const ammoniti = [];
       const tiri = [];
