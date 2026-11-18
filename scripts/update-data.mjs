@@ -14,7 +14,8 @@ const COMPETITIONS = [
   { name: 'La Liga', id: 140 },
   { name: 'Bundesliga', id: 78 },
   { name: 'Ligue 1', id: 61 },
-  { name: 'Champions League', id: 2 }
+  { name: 'Champions League', id: 2 },
+  { name: 'Serie B', id: 136 }
 ];
 
 function fetchFromApi(path) {
@@ -42,7 +43,6 @@ function fetchFromApi(path) {
   });
 }
 
-// Generatore matematico sicuro con variabilità totale e modulo positivo
 function calculateDynamicOdds(homeTeam, awayTeam, fixtureId) {
   const idNum = Number(fixtureId) || Math.floor(Math.random() * 100000);
   
@@ -179,9 +179,10 @@ async function run() {
     const season = new Date().getMonth() < 7 ? currentYear - 1 : currentYear;
 
     for (const comp of COMPETITIONS) {
-      console.log(`🔄 Scarico partite per ${comp.name}...`);
+      console.log(`🔄 Scarico partite per ${comp.name} (ID: ${comp.id})...`);
       
-      const data = await fetchFromApi(`/fixtures?league=${comp.id}&season=${season}&next=3`);
+      // Impostato a 7 giorni per coprire un intervallo più ampio
+      const data = await fetchFromApi(`/fixtures?league=${comp.id}&season=${season}&next=7`);
       const fixtures = data?.response || [];
       console.log(`⚽ Trovate ${fixtures.length} partite per ${comp.name}`);
 
@@ -212,7 +213,7 @@ async function run() {
     }
 
     if (allMatches.length > 0) {
-      console.log(`💾 Salvataggio di ${allMatches.length} match su Supabase...`);
+      console.log(`💾 Salvataggio di ${allMatches.length} match totali su Supabase...`);
       await upsertToSupabase(allMatches);
       console.log('✅ Sincronizzazione completata con successo!');
     } else {
