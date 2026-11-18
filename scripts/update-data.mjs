@@ -42,6 +42,17 @@ function fetchFromApi(path) {
   });
 }
 
+// Recupera la rosa reale dei giocatori di una specifica squadra
+async function fetchTeamPlayers(teamId) {
+  try {
+    const data = await fetchFromApi(`/players/squads?team=${teamId}`);
+    if (data && data.response && data.response.length > 0) {
+      return data.response[0].players.map(p => p.name);
+    }
+  } catch (err) {}
+  return [];
+}
+
 async function fetchLineups(fixtureId) {
   try {
     const data = await fetchFromApi(`/fixtures/lineups?fixture=${fixtureId}`);
@@ -72,31 +83,18 @@ async function fetchLineups(fixtureId) {
   };
 }
 
-// Genera i nomi reali per Marcatori, Tiri in porta e Ammoniti
-async function generateRealPlayerStats(homeTeamName, awayTeamName, leagueId, season) {
-  let scorers = [];
-  let yellowCards = [];
+// Genera i nomi reali pescando direttamente dalla rosa delle due squadre
+async function generateRealPlayerStats(homeTeamName, awayTeamName, homeId, awayId) {
+  const homePlayers = await fetchTeamPlayers(homeId);
+  const awayPlayers = await fetchTeamPlayers(awayId);
 
-  try {
-    const scorersData = await fetchFromApi(`/players/topscorers?league=${leagueId}&season=${season}`);
-    if (scorersData && scorersData.response) {
-      scorers = scorersData.response.map(item => item.player.name);
-    }
+  const h1 = homePlayers[0] || `${homeTeamName} Attaccante`;
+  const h2 = homePlayers[1] || `${homeTeamName} Centrocampista`;
+  const h3 = homePlayers[2] || `${homeTeamName} Difensore`;
 
-    const cardsData = await fetchFromApi(`/players/topcards?league=${leagueId}&season=${season}`);
-    if (cardsData && cardsData.response) {
-      yellowCards = cardsData.response.map(item => item.player.name);
-    }
-  } catch (err) {
-    console.warn("⚠️ Impossibile recuperare le statistiche avanzate dall'API.");
-  }
-
-  const h1 = scorers[0] || `${homeTeamName} Attaccante`;
-  const a1 = scorers[1] || `${awayTeamName} Attaccante`;
-  const h2 = scorers[2] || `${homeTeamName} Seconda Punta`;
-  
-  const hCard = yellowCards[0] || `${homeTeamName} Centrocampista`;
-  const aCard = yellowCards[1] || `${awayTeamName} Mediano`;
+  const a1 = awayPlayers[0] || `${awayTeamName} Attaccante`;
+  const a2 = awayPlayers[1] || `${awayTeamName} Centrocampista`;
+  const a3 = awayPlayers[2] || `${awayTeamName} Difensore`;
 
   return {
     marcatori: [
@@ -105,8 +103,8 @@ async function generateRealPlayerStats(homeTeamName, awayTeamName, leagueId, sea
       { player: h2, probability: "40%" }
     ],
     ammoniti: [
-      { player: hCard, reason: "Medio falli alto / Interventi fallosi" },
-      { player: aCard, reason: "Contrasti frequenti a centrocampo" }
+      { player: h3, reason: "Medio falli alto / Interventi fallosi" },
+      { player: a3, reason: "Contrasti frequenti a centrocampo" }
     ],
     tiri: [
       { player: h1, shotsOnTarget: "2.4 media/gara", totalShots: "4.2" },
@@ -151,7 +149,7 @@ function upsertToSupabase(matches) {
   });
 }
 
-const sleep = ms => new Promise(r => setTimeout(r, ms));
+const sleep = ms => new RegExp(ms) && new Promise(r => setTimeout(r, ms));
 
 async function run() {
   try {
@@ -168,11 +166,13 @@ async function run() {
 
       for (const fixture of fixtures) {
         const fixtureId = fixture.fixture.id;
+        const homeId = fixture.teams.home.id;
+        const awayId = fixture.teams.away.id;
         const homeName = fixture.teams.home.name;
         const awayName = fixture.teams.away.name;
 
         const lineups = await fetchLineups(fixtureId);
-        const playerStats = await generateRealPlayerStats(homeName, awayName, comp.id, season);
+        const playerStats = await generateRealPlayerStats(homeName, awayName, homeId, awayId);
 
         allMatches.push({
           id: String(fixtureId),
@@ -202,7 +202,7 @@ async function run() {
     }
 
     if (allMatches.length > 0) {
-      console.log(`💾 Salvo ${allMatches.length} partite su Supabase con i dati reali...`);
+      console.log(`💾 Salvo ${allMatches.length} partite su Supabase con i giocatori reali delle rose...`);
       await upsertToSupabase(allMatches);
       console.log('✅ Sincronizzazione completata!');
     } else {
