@@ -1,3 +1,10 @@
+name: Update Football Data
+
+on:
+  schedule:
+    - cron: '0 8 * * *' # Si avvia in automatico ogni giorno alle 08:00 UTC
+  workflow_dispatch: # Ti permette di cliccare "Run workflow" manualmente da GitHub
+
 jobs:
   sync:
     runs-on: ubuntu-latest
