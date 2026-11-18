@@ -4,7 +4,6 @@ const fs = require('fs');
 const API_KEY = process.env.RAPIDAPI_KEY;
 const API_HOST = 'api-football-v1.p.rapidapi.com';
 
-// Cache per non scaricare due volte la stessa squadra e risparmiare chiamate API
 const teamStatsCache = {};
 
 async function callApi(path) {
@@ -41,30 +40,37 @@ async function getSeasonPlayers(teamId, leagueId, season) {
   const key = `${teamId}_${leagueId}_${season}`;
   if (teamStatsCache[key]) return teamStatsCache[key];
 
-  // Scarica la rosa con le statistiche stagionali (pagina 1 = primi 20 giocatori)
-  const response = await callApi(`/players?team=${teamId}&league=${leagueId}&season=${season}&page=1`);
-  teamStatsCache[key] = response || [];
-  return teamStatsCache[key];
+  let allPlayers = [];
+  try {
+    const page1 = await callApi(`/players?team=${teamId}&league=${leagueId}&season=${season}&page=1`);
+    const page2 = await callApi(`/players?team=${teamId}&league=${leagueId}&season=${season}&page=2`);
+    allPlayers = [...(page1 || []), ...(page2 || [])];
+  } catch (e) {
+    console.log(`⚠️ Errore nel recupero giocatori per il team ${teamId}`);
+  }
+
+  teamStatsCache[key] = allPlayers;
+  return allPlayers;
 }
 
 async function run() {
   try {
-    // Inserisci qui gli ID dei campionati che vuoi (es. 135 = Serie A, 39 = Premier League, 140 = La Liga)
-    const LEAGUES = [135];
+    // 135: Serie A, 39: Premier, 61: Ligue 1, 2: Champions, 140: Liga, 78: Bundesliga, 3: Europa League
+    const LEAGUES = [135, 39, 61, 2, 140, 78, 3]; 
     const SEASON = 2026;
     const matches = [];
 
     for (const leagueId of LEAGUES) {
-      console.log(`🔄 Scarico prossime partite per Lega ${leagueId} (Stagione ${SEASON})...`);
-      // Prendiamo le prossime 5 partite della lega per restare dentro i limiti del piano gratuito
-      const fixturesRaw = await callApi(`/fixtures?league=${leagueId}&season=${SEASON}&next=5`);
-      console.log(`📊 Partite trovate: ${fixturesRaw.length}`);
+      console.log(`🔄 Scarico prossime partite per Lega ID ${leagueId} (Stagione ${SEASON})...`);
+      // Usiamo next=2 per ogni campionato per restare nel limite delle 100 chiamate giornaliere gratuite
+      const fixturesRaw = await callApi(`/fixtures?league=${leagueId}&season=${SEASON}&next=2`);
+      console.log(`📊 Partite trovate per Lega ${leagueId}: ${fixturesRaw.length}`);
 
       for (const f of fixturesRaw) {
         const homeTeam = f.teams.home;
         const awayTeam = f.teams.away;
 
-        console.log(`🔎 Analizzo statistiche giocatori: ${homeTeam.name} vs ${awayTeam.name}`);
+        console.log(`🔎 Analizzo statistiche per: ${homeTeam.name} vs ${awayTeam.name}`);
 
         const homePlayers = await getSeasonPlayers(homeTeam.id, leagueId, SEASON);
         const awayPlayers = await getSeasonPlayers(awayTeam.id, leagueId, SEASON);
@@ -80,7 +86,9 @@ async function run() {
 
         for (const entry of combinedPlayers) {
           const playerName = entry.player.name;
-          const stats = entry.statistics && entry.statistics[0];
+          if (!entry.statistics || entry.statistics.length === 0) continue;
+
+          const stats = entry.statistics.find(s => s.league && s.league.id === leagueId);
           if (!stats) continue;
 
           const appearances = stats.games?.appearences || 1;
@@ -89,12 +97,12 @@ async function run() {
           const goals = stats.goals?.total || 0;
 
           if (yellows > 0) {
-            const prob = Math.min(85, Math.round((yellows / appearances) * 100));
+            const prob = Math.min(90, Math.round((yellows / appearances) * 100) + 15);
             ammonitiList.push({
               name: playerName,
               team: entry.teamName,
               count: yellows,
-              prob: `${prob}% (${yellows} gialli)`
+              prob: `${prob}% prob. (${yellows} gialli in stagione)`
             });
           }
 
@@ -104,22 +112,21 @@ async function run() {
               name: playerName,
               team: entry.teamName,
               count: shotsOn,
-              prob: `${avg} tiri in porta/gara`
+              prob: `${avg} tiri in porta a partita`
             });
           }
 
           if (goals > 0) {
-            const probGoal = Math.min(80, Math.round((goals / appearances) * 100));
+            const probGoal = Math.min(85, Math.round((goals / appearances) * 100) + 20);
             marcatoriList.push({
               name: playerName,
               team: entry.teamName,
               count: goals,
-              prob: `${probGoal}% (${goals} gol)`
+              prob: `${probGoal}% prob. (${goals} gol in stagione)`
             });
           }
         }
 
-        // Ordiniamo dal più alto al più basso e prendiamo i primi 4 per ogni categoria
         ammonitiList.sort((a, b) => b.count - a.count);
         tiriList.sort((a, b) => b.count - a.count);
         marcatoriList.sort((a, b) => b.count - a.count);
@@ -153,14 +160,3 @@ async function run() {
 
     if (!fs.existsSync('./data')) {
       fs.mkdirSync('./data');
-    }
-
-    fs.writeFileSync('./data/fixtures.json', JSON.stringify(payload, null, 2));
-    console.log(`✅ Completato! Salvate ${matches.length} partite con pronostici giocatori.`);
-  } catch (err) {
-    console.error("❌ Errore durante l'esecuzione:", err);
-    process.exit(1);
-  }
-}
-
-run();
