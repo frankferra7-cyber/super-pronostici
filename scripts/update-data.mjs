@@ -176,15 +176,28 @@ async function run() {
     const currentYear = new Date().getFullYear();
     const season = new Date().getMonth() < 7 ? currentYear - 1 : currentYear;
 
-    console.log(`📅 Stagione di riferimento API-Football: ${season}`);
+    console.log(`⚽ Avvio sincronizzazione a giornate per la stagione: ${season}`);
 
     for (const comp of COMPETITIONS) {
-      console.log(`🔄 Scarico partite reali per ${comp.name} (ID: ${comp.id})...`);
+      console.log(`\n🔍 Cerco le giornate attive per ${comp.name}...`);
       
-      // Sfruttiamo il parametro ufficiale next=7 per prendere i prossimi 7 match reali della lega
-      const data = await fetchFromApi(`/fixtures?league=${comp.id}&season=${season}&next=7`);
-      const fixtures = data?.response || [];
-      console.log(`⚽ Trovate ${fixtures.length} partite reali per ${comp.name}`);
+      // 1. Chiediamo la lista dei turni/giornate disponibili per questa lega e stagione
+      const roundsData = await fetchFromApi(`/fixtures/rounds?league=${comp.id}&season=${season}&current=true`);
+      const rounds = roundsData?.response || [];
+
+      if (rounds.length === 0) {
+        console.log(`⚠️ Nessun turno corrente trovato per ${comp.name}`);
+        continue;
+      }
+
+      // Prendiamo il turno corrente (es. "Regular Season - 25")
+      const currentRound = rounds[0];
+      console.log(`📍 Turno corrente individuato: "${currentRound}"`);
+
+      // Scarichiamo tutte le partite di questo turno esatto
+      const fixturesData = await fetchFromApi(`/fixtures?league=${comp.id}&season=${season}&round=${encodeURIComponent(currentRound)}`);
+      const fixtures = fixturesData?.response || [];
+      console.log(`📊 Trovate ${fixtures.length} partite per il turno ${currentRound}`);
 
       for (const fixture of fixtures) {
         const fixtureId = fixture.fixture.id;
@@ -206,16 +219,16 @@ async function run() {
           updated_at: new Date().toISOString()
         });
 
-        await sleep(300);
+        await sleep(200);
       }
     }
 
     if (allMatches.length > 0) {
-      console.log(`💾 Salvataggio di ${allMatches.length} match reali totali su Supabase...`);
+      console.log(`\n💾 Salvataggio di ${allMatches.length} match complessivi divisi per giornata su Supabase...`);
       await upsertToSupabase(allMatches);
-      console.log('✅ Sincronizzazione completata con successo!');
+      console.log('✅ Sincronizzazione a giornate completata con successo!');
     } else {
-      console.log('⚠️ Nessuna partita trovata al momento per le leghe selezionate.');
+      console.log('⚠️ Nessuna partita trovata da sincronizzare.');
     }
   } catch (err) {
     console.error('❌ Errore critico nello script:', err);
