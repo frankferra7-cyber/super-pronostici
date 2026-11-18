@@ -3,12 +3,12 @@ import https from 'https';
 const FOOTBALL_DATA_KEY = process.env.FOOTBALL_DATA_KEY;
 const API_FOOTBALL_KEY = process.env.API_FOOTBALL_KEY;
 const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
+const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
 
 if (!FOOTBALL_DATA_KEY) throw new Error("Missing FOOTBALL_DATA_KEY secret");
 if (!API_FOOTBALL_KEY) throw new Error("Missing API_FOOTBALL_KEY secret");
 if (!SUPABASE_URL) throw new Error("Missing SUPABASE_URL secret");
-if (!SUPABASE_SERVICE_KEY) throw new Error("Missing SUPABASE_SERVICE_KEY secret");
+if (!SUPABASE_SECRET_KEY) throw new Error("Missing SUPABASE_SECRET_KEY secret");
 
 const COMPETITIONS = [
   { code: 'SA', name: 'Serie A' },
@@ -39,7 +39,6 @@ function fetchFromApi(hostname, path, headers) {
 
 async function fetchLineups(fixtureId) {
   try {
-    // Endpoint ufficiale di API-Football per le formazioni
     const data = await fetchFromApi(
       'v3.football.api-sports.io',
       `/fixtures/lineups?fixture=${fixtureId}`,
@@ -69,7 +68,6 @@ async function fetchLineups(fixtureId) {
     console.warn(`⚠️ Impossibile recuperare le formazioni per il match ${fixtureId}:`, err.message);
   }
 
-  // Fallback di default se le formazioni non sono ancora disponibili (es. match a giorni di distanza)
   return {
     home: { teamName: "Casa", formation: "4-3-3", isOfficial: false, startXI: [] },
     away: { teamName: "Ospiti", formation: "4-2-3-1", isOfficial: false, startXI: [] }
@@ -86,8 +84,8 @@ function upsertToSupabase(matches) {
       path: url.pathname,
       method: 'POST',
       headers: {
-        'apikey': SUPABASE_SERVICE_KEY,
-        'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
+        'apikey': SUPABASE_SECRET_KEY,
+        'Authorization': `Bearer ${SUPABASE_SECRET_KEY}`,
         'Content-Type': 'application/json',
         'Prefer': 'resolution=merge-duplicates'
       }
@@ -125,11 +123,9 @@ async function run() {
         { 'X-Auth-Token': FOOTBALL_DATA_KEY }
       );
       
-      const upcoming = (data.matches || []).slice(0, 3); // Limitiamo per preservare i limiti delle API
+      const upcoming = (data.matches || []).slice(0, 3);
 
       for (const m of upcoming) {
-        // Nota: se gli ID tra football-data e api-football differiscono, 
-        // qui andrebbe mappato l'ID. Per ora usiamo m.id come riferimento.
         const lineups = await fetchLineups(m.id);
 
         allMatches.push({
@@ -153,7 +149,7 @@ async function run() {
           updated_at: new Date().toISOString()
         });
 
-        await sleep(500); // Pausa breve tra una richiesta di lineup e l'altra
+        await sleep(500);
       }
 
       await sleep(2000);
