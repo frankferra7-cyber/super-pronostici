@@ -65,7 +65,48 @@ function matchCard(m){
 const p=m.prediction;
 const markets=p?'<div class="chips"><span class="chip">1 <b>'+pct(p.oneXTwo.home)+'</b></span><span class="chip">X <b>'+pct(p.oneXTwo.draw)+'</b></span><span class="chip">2 <b>'+pct(p.oneXTwo.away)+'</b></span></div><div class="chips" style="margin-top:7px"><span class="chip">Over 2.5 <b>'+pct(p.over25)+'</b></span><span class="chip">Under 2.5 <b>'+pct(p.under25)+'</b></span><span class="chip">Goal <b>'+pct(p.bothTeamsToScore)+'</b></span></div><div class="note">Doppia chance: 1X '+pct(p.doubleChance["1X"])+' · X2 '+pct(p.doubleChance.X2)+' · 12 '+pct(p.doubleChance["12"])+'</div>':'<div class="note">⚠️ '+esc(m.reason)+'</div>';
 const matchId=esc(m.id);
-return '<article class="card match-card" data-match-id="'+matchId+'"><div class="league">'+esc(m.league)+'</div><div class="match"><div class="team">'+esc(m.home)+'</div><div class="vs">VS</div><div class="team" style="text-align:right">'+esc(m.away)+'</div></div><div class="time">'+dateFms(m.kickoff)+'</div><div class="match-tabs" role="tablist" aria-label="Dettagli partita"><button type="button" class="match-tab active" data-match-tab="partita">Partita</button><button type="button" class="match-tab" data-match-tab="ammoniti">🟨 Ammoniti</button><button type="button" class="match-tab" data-match-tab="tiri">🥅 Tiri in porta</button><button type="button" class="match-tab" data-match-tab="marcatore">🎯 Possibile marcatore</button></div><section class="match-panel" data-match-panel="partita">'+markets+'<div class="note">'+(p?'Stima Poisson · gol attesi '+p.expectedGoals.home+'–'+p.expectedGoals.away+' · esito più probabile '+esc(p.mostLikelyOutcome)+' · risultato indicativo '+esc(p.likelyScore):'Nessuna previsione pubblicata')+'</div></section><section class="match-panel" data-match-panel="ammoniti" hidden><strong>Possibili ammoniti</strong><div class="note">Le statistiche individuali verificate per questa partita non sono ancora disponibili. Non mostriamo nomi o probabilità inventati.</div></section><section class="match-panel" data-match-panel="tiri" hidden><strong>Tiri in porta</strong><div class="note">Le statistiche individuali verificate per questa partita non sono ancora disponibili. Non mostriamo nomi o probabilità inventati.</div></section><section class="match-panel" data-match-panel="marcatore" hidden><strong>Possibile marcatore</strong><div class="note">Le statistiche individuali verificate per questa partita non sono ancora disponibili. Non mostriamo nomi o probabilità inventati.</div></section></article>';
+
+// Renderizziamo i dati statistici individuali dei giocatori se presenti nel JSON
+const stats=m.playerStats||{};
+const renderList=(items,formatter)=>{
+  if(!items||!items.length)return '<div class="note">Dati non ancora disponibili.</div>';
+  return '<ul style="list-style:none;padding:0;margin:0">'+items.map(formatter).join('')+'</ul>';
+};
+
+const ammonitiHtml=renderList(stats.ammoniti, x=>'<li style="padding:6px 0;border-bottom:1px solid #23384b;display:flex;justify-content:space-between"><span><b>'+esc(x.name)+'</b> <small style="color:var(--muted)">('+esc(x.team)+')</small></span><span style="color:var(--green)">'+esc(x.prob)+'</span></li>');
+const tiriHtml=renderList(stats.tiri, x=>'<li style="padding:6px 0;border-bottom:1px solid #23384b;display:flex;justify-content:space-between"><span><b>'+esc(x.name)+'</b> <small style="color:var(--muted)">('+esc(x.team)+')</small></span><span style="color:var(--green)">'+esc(x.prob)+'</span></li>');
+const marcatoriHtml=renderList(stats.marcatori, x=>'<li style="padding:6px 0;border-bottom:1px solid #23384b;display:flex;justify-content:space-between"><span><b>'+esc(x.name)+'</b> <small style="color:var(--muted)">('+esc(x.team)+')</small></span><span style="color:var(--green)">'+esc(x.prob)+'</span></li>');
+
+// Renderizziamo il tab Formazioni (Probabili o Ufficiali)
+const lin=m.lineups||{};
+const renderTeamLineup=(teamObj, teamName)=>{
+  if(!teamObj || !teamObj.startXI || !teamObj.startXI.length) return '<p class="note">Formazione non ancora disponibile per '+esc(teamName)+'</p>';
+  const isOff = teamObj.isOfficial === true;
+  const badgeColor = isOff ? '#16a34a' : '#d97706';
+  const badgeText = isOff ? 'UFFICIALE' : 'PROBABILE';
+  
+  const listItems = teamObj.startXI.map(p=>`
+    <li style="padding: 5px 0; border-bottom: 1px solid #23384b; display: flex; justify-content: space-between; font-size:13px;">
+      <span><strong style="color: var(--green);">${esc(p.pos)}</strong> - ${esc(p.name)}</span>
+      <span style="color: var(--muted);">#${esc(p.number)}</span>
+    </li>
+  `).join('');
+
+  return `
+    <div style="flex: 1; min-width: 240px; background: #0e1b2a; padding: 12px; border-radius: 10px; border:1px solid var(--line);">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+        <h4 style="margin: 0; font-size:14px; color: var(--text);">${esc(teamObj.teamName || teamName)}</h4>
+        <span style="font-size: 10px; padding: 2px 6px; border-radius: 10px; font-weight: bold; background: ${badgeColor}; color: white;">${badgeText}</span>
+      </div>
+      <p style="font-size: 11px; color: var(--muted); margin: 0 0 8px 0;">Modulo: ${esc(teamObj.formation || 'N/D')}</p>
+      <ul style="list-style: none; padding: 0; margin: 0;">${listItems}</ul>
+    </div>
+  `;
+};
+
+const formHtml=`<div style="display: flex; gap: 12px; flex-wrap: wrap; margin-top: 5px;">${renderTeamLineup(lin.home, m.home)}${renderTeamLineup(lin.away, m.away)}</div>`;
+
+return '<article class="card match-card" data-match-id="'+matchId+'"><div class="league">'+esc(m.league)+'</div><div class="match"><div class="team">'+esc(m.home)+'</div><div class="vs">VS</div><div class="team" style="text-align:right">'+esc(m.away)+'</div></div><div class="time">'+dateFms(m.kickoff)+'</div><div class="match-tabs" role="tablist" aria-label="Dettagli partita"><button type="button" class="match-tab active" data-match-tab="partita">Partita</button><button type="button" class="match-tab" data-match-tab="formazioni">📋 Formazioni</button><button type="button" class="match-tab" data-match-tab="ammoniti">🟨 Ammoniti</button><button type="button" class="match-tab" data-match-tab="tiri">🥅 Tiri in porta</button><button type="button" class="match-tab" data-match-tab="marcatore">🎯 Marcatore</button></div><section class="match-panel" data-match-panel="partita">'+markets+'<div class="note">'+(p?'Stima Poisson · gol attesi '+p.expectedGoals.home+'–'+p.expectedGoals.away+' · esito più probabile '+esc(p.mostLikelyOutcome)+' · risultato indicativo '+esc(p.likelyScore):'Nessuna previsione pubblicata')+'</div></section><section class="match-panel" data-match-panel="formazioni" hidden><strong>Formazioni (Titolari)</strong>'+formHtml+'</section><section class="match-panel" data-match-panel="ammoniti" hidden><strong>Possibili ammoniti (Stagionali)</strong>'+ammonitiHtml+'</section><section class="match-panel" data-match-panel="tiri" hidden><strong>Tiri in porta (Stagionali)</strong>'+tiriHtml+'</section><section class="match-panel" data-match-panel="marcatore" hidden><strong>Possibili marcatori (Stagionali)</strong>'+marcatoriHtml+'</section></article>';
 }
 
 function render(){
