@@ -42,37 +42,40 @@ function fetchFromApi(path) {
   });
 }
 
-// Generatore a forte variabilità basato sull'ID univoco del match e sui nomi reali
+// Generatore matematico sicuro al 100% con variabilità totale e modulo positivo
 function calculateDynamicOdds(homeTeam, awayTeam, fixtureId) {
-  const idNum = Number(fixtureId) || 12345;
+  const idNum = Number(fixtureId) || Math.floor(Math.random() * 100000);
   
-  // Somma dei codici ASCII delle lettere dei nomi delle squadre per renderli unici
+  // Somma dei codici ASCII dei nomi
   const homeSum = homeTeam.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
   const awaySum = awayTeam.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
 
-  // Variazione basata sul mix di ID e nomi
-  const seed = (idNum + homeSum - awaySum) % 45; 
-  
-  let homePct = 40 + (seed % 30); // Varia tra 40% e 70%
-  let awayPct = 20 + ((seed * 3) % 30); // Varia tra 20% e 50%
+  // Calcolo sicuro del seme con modulo positivo per evitare numeri negativi
+  const rawSeed = (idNum * 7 + homeSum * 3 - awaySum * 2);
+  const seed = ((rawSeed % 60) + 60) % 60; // Resto sempre compreso tra 0 e 59
+
+  // Creiamo forbici di percentuali molto ampie e differenti tra loro
+  let homePct = 30 + (seed % 40); // Varia dal 30% al 69%
+  let awayPct = 15 + ((seed * 5) % 40); // Varia dal 15% al 54%
   let drawPct = 100 - homePct - awayPct;
 
+  // Gestione di sicurezza se il pareggio sballa
   if (drawPct < 15) drawPct = 22;
-  if (drawPct > 35) drawPct = 28;
-  
-  // Ribilanciamo a 100 esatto
+  if (drawPct > 35) drawPct = 25;
+
+  // Ribilanciamo matematicamente a 100 esatto
   const total = homePct + drawPct + awayPct;
   const hFin = Math.round((homePct / total) * 100);
   const dFin = Math.round((drawPct / total) * 100);
   const aFin = 100 - hFin - dFin;
 
-  const over25 = hFin > aFin ? 58 : 50;
+  const over25 = hFin > aFin ? 62 : 48;
 
   return {
     oneXTwo: { home: hFin, draw: dFin, away: aFin },
     over25: over25,
     under25: 100 - over25,
-    bothTeamsToScore: 52,
+    bothTeamsToScore: 55,
     doubleChance: { "1X": hFin + dFin, "X2": aFin + dFin, "12": 100 - dFin },
     expectedGoals: { home: (hFin / 25).toFixed(1), away: (aFin / 25).toFixed(1) },
     mostLikelyOutcome: hFin > aFin ? "1" : (aFin > hFin ? "2" : "X"),
