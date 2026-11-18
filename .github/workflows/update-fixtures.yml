@@ -1,32 +1,18 @@
-name: Aggiorna Partite e Statistiche
-
-on:
-  schedule:
-    - cron: '0 6 * * *'
-  workflow_dispatch:
-
-permissions:
-  contents: write
-
 jobs:
-  sync-data:
+  sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Clona repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Configura Node.js
+      - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
 
-      - name: Installa dipendenze ed esegui script
+      - name: Fetch football data and sync to Supabase
         env:
-          RAPIDAPI_KEY: ${{ secrets.RAPIDAPI_KEY }}
+          FOOTBALL_DATA_KEY: ${{ secrets.FOOTBALL_DATA_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: node scripts/fetch-football.js
-
-      - name: Salva e carica le modifiche sul sito
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "Aggiornamento automatico fixtures e statistiche giocatori"
-          file_pattern: data/fixtures.json
