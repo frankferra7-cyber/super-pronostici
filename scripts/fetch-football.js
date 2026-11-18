@@ -1,45 +1,24 @@
-const fs = require('fs');
-const https = require('https');
-
-const API_KEY = process.env.RAPIDAPI_KEY;
-const API_HOST = 'api-football-v1.p.rapidapi.com';
-
-async function callApi(path) {
-  return new Promise((resolve, reject) => {
-    const options = {
-      hostname: API_HOST,
-      path: path,
-      method: 'GET',
-      headers: {
-        'x-rapidapi-key': API_KEY,
-        'x-rapidapi-host': API_HOST
-      }
-    };
-
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.on('data', (chunk) => data += chunk);
-      res.on('end', () => {
-        try {
-          const parsed = JSON.parse(data);
-          resolve(parsed.response || []);
-        } catch (e) {
-          reject(e);
-        }
-      });
-    });
-
-    req.on('error', reject);
-    req.end();
-  });
-}
-
 async function generateFixturesFile() {
   try {
-    console.log("🔄 Connessione ad API-Football in corso...");
-    const today = new Date().toISOString().split('T')[0];
-    const fixturesRaw = await callApi(`/fixtures?date=${today}`);
+    console.log("🔄 Connessione ad API-Football per i prossimi 7 giorni...");
+    
+    // Calcoliamo la data di oggi e quella tra 7 giorni nel futuro
+    const todayObj = new Date();
+    const futureObj = new Date();
+    futureObj.setDate(todayObj.getDate() + 7);
+
+    const today = todayObj.toISOString().split('T')[0];
+    const futureDate = futureObj.toISOString().split('T')[0];
+
+    console.log(`📅 Cerco partite in programma da ${today} a ${futureDate}`);
+    
+    // Chiediamo all'API le partite da oggi ai prossimi 7 giorni
+    const fixturesRaw = await callApi(`/fixtures?from=${today}&to=${futureDate}`);
     const matches = [];
+
+    if (!fixturesRaw || fixturesRaw.length === 0) {
+      console.log("⚠️ Nessuna partita trovata nei prossimi 7 giorni.");
+    }
 
     for (const f of fixturesRaw) {
       const fixtureId = f.fixture.id;
@@ -48,6 +27,7 @@ async function generateFixturesFile() {
       const awayTeam = f.teams.away.name;
       const kickoff = f.fixture.date;
 
+      // Nota: per le partite future le statistiche live (ammoniti, tiri, marcatori) saranno vuote finché non iniziano
       const playersStatsRaw = await callApi(`/fixtures/players?fixture=${fixtureId}`);
       const ammoniti = [];
       const tiri = [];
@@ -101,11 +81,9 @@ async function generateFixturesFile() {
     }
 
     fs.writeFileSync('./data/fixtures.json', JSON.stringify(payload, null, 2));
-    console.log("✅ File fixtures.json generato con successo!");
+    console.log(`✅ File fixtures.json generato con successo! Totale partite: ${matches.length}`);
   } catch (error) {
     console.error("❌ Errore:", error);
     process.exit(1);
   }
 }
-
-generateFixturesFile();
