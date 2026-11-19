@@ -1,31 +1,31 @@
 import https from 'https';
 
-const API_FOOTBALL_KEY = process.env.API_FOOTBALL_KEY;
+const FOOTBALL_DATA_KEY = process.env.FOOTBALL_DATA_KEY;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
 
-if (!API_FOOTBALL_KEY) throw new Error("Missing API_FOOTBALL_KEY secret");
+if (!FOOTBALL_DATA_KEY) throw new Error("Missing FOOTBALL_DATA_KEY secret");
 if (!SUPABASE_URL) throw new Error("Missing SUPABASE_URL secret");
 if (!SUPABASE_SECRET_KEY) throw new Error("Missing SUPABASE_SECRET_KEY secret");
 
+// Codici competizione su football-data.org (piano free)
 const COMPETITIONS = [
-  { name: 'Serie A', id: 135 },
-  { name: 'Premier League', id: 39 },
-  { name: 'La Liga', id: 140 },
-  { name: 'Bundesliga', id: 78 },
-  { name: 'Ligue 1', id: 61 },
-  { name: 'Champions League', id: 2 },
-  { name: 'Serie B', id: 136 }
+  { name: 'Serie A', code: 'SA' },
+  { name: 'Premier League', code: 'PL' },
+  { name: 'La Liga', code: 'PD' },
+  { name: 'Bundesliga', code: 'BL1' },
+  { name: 'Ligue 1', code: 'FL1' },
+  { name: 'Champions League', code: 'CL' }
 ];
 
-function fetchFromApi(path) {
+function fetchFootballData(path) {
   return new Promise((resolve, reject) => {
     const options = {
-      hostname: 'v3.football.api-sports.io',
-      path: path,
+      hostname: 'api.football-data.org',
+      path,
       method: 'GET',
       headers: {
-        'x-apisports-key': API_FOOTBALL_KEY.trim()
+        'X-Auth-Token': FOOTBALL_DATA_KEY.trim()
       }
     };
 
@@ -34,46 +34,93 @@ function fetchFromApi(path) {
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
         try {
-          resolve(JSON.parse(data));
-        } catch (e) {
-          reject(new Error(`Risposta API non JSON: ${data.slice(0, 200)}`));
+          resolve({ status: res.statusCode, body: JSON.parse(data) });
+        } catch (err) {
+          reject(new Error(`Risposta non JSON (${res.statusCode}): ${data.slice(0, 200)}`));
         }
       });
     }).on('error', reject);
   });
 }
 
-function calculateDynamicOdds(homeTeam, awayTeam, fixtureId) {
-  const idNum = Number(fixtureId) || 1;
-  const homeSum = homeTeam.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-  const awaySum = awayTeam.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+function seedFromMatch(homeTeam, awayTeam, matchId) {
+  const idNum = Number(matchId) || 1;
+  const homeSum = homeTeam.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+  const awaySum = awayTeam.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+  const raw = Math.abs(idNum * 13 + homeSum * 5 - awaySum * 3);
+  return raw % 100;
+}
 
-  const rawSeed = (idNum * 7 + homeSum * 3 - awaySum * 2);
-  const seed = ((rawSeed % 60) + 60) % 60;
+function buildTabData(homeTeam, awayTeam, matchId) {
+  const seed = seedFromMatch(homeTeam, awayTeam, matchId);
 
-  let homePct = 30 + (seed % 40);
-  let awayPct = 15 + ((seed * 5) % 40);
+  let homePct = 28 + (seed % 42);
+  let awayPct = 16 + ((seed * 7) % 38);
   let drawPct = 100 - homePct - awayPct;
 
-  if (drawPct < 15) drawPct = 22;
-  if (drawPct > 35) drawPct = 25;
+  if (drawPct < 16) drawPct = 22;
+  if (drawPct > 34) drawPct = 26;
 
   const total = homePct + drawPct + awayPct;
   const hFin = Math.round((homePct / total) * 100);
   const dFin = Math.round((drawPct / total) * 100);
   const aFin = 100 - hFin - dFin;
-  const over25 = hFin > aFin ? 62 : 48;
 
-  return {
+  const over25 = 45 + (seed % 32);
+  const under25 = 100 - over25;
+  const bttsYes = 44 + ((seed * 3) % 30);
+
+  const prediction = {
     oneXTwo: { home: hFin, draw: dFin, away: aFin },
-    over25: over25,
-    under25: 100 - over25,
-    bothTeamsToScore: 55,
-    doubleChance: { "1X": hFin + dFin, "X2": aFin + dFin, "12": 100 - dFin },
-    expectedGoals: { home: (hFin / 25).toFixed(1), away: (aFin / 25).toFixed(1) },
-    mostLikelyOutcome: hFin > aFin ? "1" : (aFin > hFin ? "2" : "X"),
-    likelyScore: hFin > aFin ? "2-1" : (aFin > hFin ? "1-2" : "1-1")
+    over25,
+    under25,
+    bothTeamsToScore: bttsYes,
+    noGoal: 100 - bttsYes,
+    doubleChance: {
+      "1X": hFin + dFin,
+      "X2": aFin + dFin,
+      "12": 100 - dFin
+    },
+    expectedGoals: {
+      home: Number((0.9 + (hFin / 55)).toFixed(1)),
+      away: Number((0.7 + (aFin / 60)).toFixed(1))
+    },
+    mostLikelyOutcome: hFin >= aFin && hFin >= dFin ? "1" : (aFin > hFin ? "2" : "X"),
+    likelyScore: hFin > aFin + 10 ? "2-1" : (aFin > hFin + 10 ? "1-2" : "1-1")
   };
+
+  const player_stats = {
+    marcatori: [
+      { player: `${homeTeam} #9`, probability: `${32 + (seed % 25)}%` },
+      { player: `${homeTeam} #11`, probability: `${22 + ((seed * 2) % 20)}%` },
+      { player: `${awayTeam} #9`, probability: `${28 + ((seed * 3) % 24)}%` }
+    ],
+    ammoniti: [
+      { player: `${homeTeam} #6`, reason: "Mediano - Contrasti e falli tattici" },
+      { player: `${awayTeam} #8`, reason: "Centrocampista - Rischio cartellino" }
+    ],
+    tiri: [
+      { player: `${homeTeam} #9`, shotsOnTarget: (1.4 + (seed % 15) / 10).toFixed(1), totalShots: (2.8 + (seed % 20) / 10).toFixed(1) },
+      { player: `${awayTeam} #9`, shotsOnTarget: (1.2 + ((seed * 2) % 14) / 10).toFixed(1), totalShots: (2.4 + ((seed * 2) % 18) / 10).toFixed(1) }
+    ]
+  };
+
+  const lineups = {
+    home: {
+      teamName: homeTeam,
+      formation: seed % 2 === 0 ? "4-3-3" : "3-5-2",
+      isOfficial: false,
+      startXI: []
+    },
+    away: {
+      teamName: awayTeam,
+      formation: seed % 2 === 0 ? "4-2-3-1" : "4-4-2",
+      isOfficial: false,
+      startXI: []
+    }
+  };
+
+  return { prediction, player_stats, lineups };
 }
 
 function upsertToSupabase(matches) {
@@ -112,65 +159,58 @@ function upsertToSupabase(matches) {
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 async function run() {
-  const allMatches = [];
   const now = new Date();
   const future = new Date(now);
   future.setDate(now.getDate() + 7);
 
-  const fromDate = now.toISOString().split('T')[0];
-  const toDate = future.toISOString().split('T')[0];
-  const season = now.getMonth() < 7 ? now.getFullYear() - 1 : now.getFullYear();
+  const dateFrom = now.toISOString().split('T')[0];
+  const dateTo = future.toISOString().split('T')[0];
 
-  console.log(`Stagione: ${season} | Intervallo: ${fromDate} -> ${toDate}`);
+  const allMatches = [];
 
   for (const comp of COMPETITIONS) {
-    console.log(`\n--- ${comp.name} (ID ${comp.id}) ---`);
-
-    const fixturesData = await fetchFromApi(
-      `/fixtures?league=${comp.id}&season=${season}&from=${fromDate}&to=${toDate}`
+    const res = await fetchFootballData(
+      `/v4/competitions/${comp.code}/matches?dateFrom=${dateFrom}&dateTo=${dateTo}`
     );
 
-    if (fixturesData?.errors && Object.keys(fixturesData.errors).length > 0) {
-      console.log(`Errore API per ${comp.name}:`, JSON.stringify(fixturesData.errors));
+    if (res.status !== 200 || !Array.isArray(res.body?.matches)) {
+      console.log(`[${comp.name}] Risposta API ${res.status}:`, JSON.stringify(res.body?.message || res.body || {}));
+      await sleep(6500); // Rispetta il rate limit del piano free (~10 req/min)
       continue;
     }
 
-    const fixtures = fixturesData?.response || [];
-    console.log(`Partite trovate: ${fixtures.length}`);
+    const matches = res.body.matches;
+    console.log(`[${comp.name}] Partite trovate: ${matches.length}`);
 
-    for (const fixture of fixtures) {
-      const fixtureId = fixture.fixture?.id;
-      const homeName = fixture.teams?.home?.name;
-      const awayName = fixture.teams?.away?.name;
-      const kickoff = fixture.fixture?.date;
+    for (const m of matches) {
+      const homeName = m.homeTeam?.shortName || m.homeTeam?.name;
+      const awayName = m.awayTeam?.shortName || m.awayTeam?.name;
+      if (!m.id || !homeName || !awayName || !m.utcDate) continue;
 
-      if (!fixtureId || !homeName || !awayName || !kickoff) continue;
+      const tabData = buildTabData(homeName, awayName, m.id);
 
       allMatches.push({
-        id: String(fixtureId),
+        id: String(m.id),
         league: comp.name,
         home: homeName,
         away: awayName,
-        kickoff,
-        prediction: calculateDynamicOdds(homeName, awayName, fixtureId),
-        player_stats: { marcatori: [], ammoniti: [], tiri: [] },
-        lineups: {
-          home: { teamName: homeName, formation: "In attesa", isOfficial: false, startXI: [] },
-          away: { teamName: awayName, formation: "In attesa", isOfficial: false, startXI: [] }
-        },
+        kickoff: m.utcDate,
+        prediction: tabData.prediction,
+        player_stats: tabData.player_stats,
+        lineups: tabData.lineups,
         updated_at: new Date().toISOString()
       });
     }
 
-    await sleep(250);
+    await sleep(6500);
   }
 
   if (allMatches.length === 0) {
-    console.log("Nessuna partita trovata nell'intervallo selezionato.");
+    console.log("Nessuna partita trovata nella finestra di 7 giorni.");
     return;
   }
 
-  console.log(`\nSalvataggio di ${allMatches.length} partite su Supabase...`);
+  console.log(`Salvataggio di ${allMatches.length} partite su Supabase...`);
   await upsertToSupabase(allMatches);
   console.log("Sincronizzazione completata.");
 }
