@@ -8,7 +8,6 @@ if (!FOOTBALL_DATA_KEY) throw new Error("Missing FOOTBALL_DATA_KEY secret");
 if (!SUPABASE_URL) throw new Error("Missing SUPABASE_URL secret");
 if (!SUPABASE_SECRET_KEY) throw new Error("Missing SUPABASE_SECRET_KEY secret");
 
-// Codici competizione su football-data.org (piano free)
 const COMPETITIONS = [
   { name: 'Serie A', code: 'SA' },
   { name: 'Premier League', code: 'PL' },
@@ -47,8 +46,7 @@ function seedFromMatch(homeTeam, awayTeam, matchId) {
   const idNum = Number(matchId) || 1;
   const homeSum = homeTeam.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
   const awaySum = awayTeam.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
-  const raw = Math.abs(idNum * 13 + homeSum * 5 - awaySum * 3);
-  return raw % 100;
+  return Math.abs(idNum * 13 + homeSum * 5 - awaySum * 3) % 100;
 }
 
 function buildTabData(homeTeam, awayTeam, matchId) {
@@ -75,7 +73,6 @@ function buildTabData(homeTeam, awayTeam, matchId) {
     over25,
     under25,
     bothTeamsToScore: bttsYes,
-    noGoal: 100 - bttsYes,
     doubleChance: {
       "1X": hFin + dFin,
       "X2": aFin + dFin,
@@ -89,19 +86,20 @@ function buildTabData(homeTeam, awayTeam, matchId) {
     likelyScore: hFin > aFin + 10 ? "2-1" : (aFin > hFin + 10 ? "1-2" : "1-1")
   };
 
+  // Chiavi allineate a index.html: name, team, prob
   const player_stats = {
     marcatori: [
-      { player: `${homeTeam} #9`, probability: `${32 + (seed % 25)}%` },
-      { player: `${homeTeam} #11`, probability: `${22 + ((seed * 2) % 20)}%` },
-      { player: `${awayTeam} #9`, probability: `${28 + ((seed * 3) % 24)}%` }
+      { name: `${homeTeam} #9`, team: homeTeam, prob: `${32 + (seed % 25)}%` },
+      { name: `${homeTeam} #11`, team: homeTeam, prob: `${22 + ((seed * 2) % 20)}%` },
+      { name: `${awayTeam} #9`, team: awayTeam, prob: `${28 + ((seed * 3) % 24)}%` }
     ],
     ammoniti: [
-      { player: `${homeTeam} #6`, reason: "Mediano - Contrasti e falli tattici" },
-      { player: `${awayTeam} #8`, reason: "Centrocampista - Rischio cartellino" }
+      { name: `${homeTeam} #6`, team: homeTeam, prob: `${26 + (seed % 22)}%` },
+      { name: `${awayTeam} #8`, team: awayTeam, prob: `${24 + ((seed * 2) % 22)}%` }
     ],
     tiri: [
-      { player: `${homeTeam} #9`, shotsOnTarget: (1.4 + (seed % 15) / 10).toFixed(1), totalShots: (2.8 + (seed % 20) / 10).toFixed(1) },
-      { player: `${awayTeam} #9`, shotsOnTarget: (1.2 + ((seed * 2) % 14) / 10).toFixed(1), totalShots: (2.4 + ((seed * 2) % 18) / 10).toFixed(1) }
+      { name: `${homeTeam} #9`, team: homeTeam, prob: `${65 + (seed % 25)}%` },
+      { name: `${awayTeam} #9`, team: awayTeam, prob: `${58 + ((seed * 2) % 26)}%` }
     ]
   };
 
@@ -175,7 +173,7 @@ async function run() {
 
     if (res.status !== 200 || !Array.isArray(res.body?.matches)) {
       console.log(`[${comp.name}] Risposta API ${res.status}:`, JSON.stringify(res.body?.message || res.body || {}));
-      await sleep(6500); // Rispetta il rate limit del piano free (~10 req/min)
+      await sleep(6500);
       continue;
     }
 
