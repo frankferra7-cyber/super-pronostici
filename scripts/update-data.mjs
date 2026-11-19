@@ -3,7 +3,7 @@ import https from 'https';
 const FOOTBALL_DATA_KEY = process.env.FOOTBALL_DATA_KEY;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
-const ODDS_API_KEY = (process.env.ODDS_API_KEY || '').trim(); // Opzionale (The Odds API)
+const ODDS_API_KEY = (process.env.ODDS_API_KEY || '').trim();
 
 if (!FOOTBALL_DATA_KEY) throw new Error("Missing FOOTBALL_DATA_KEY secret");
 if (!SUPABASE_URL) throw new Error("Missing SUPABASE_URL secret");
@@ -18,7 +18,11 @@ const COMPETITIONS = [
   { name: 'Champions League', code: 'CL', oddsKey: 'soccer_uefa_champs_league' }
 ];
 
+const REQUEST_SPACING_MS = 6500;
+const RATE_LIMIT_WAIT_MS = 65000;
 const squadCache = new Map();
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function httpGetJson(urlString, headers = {}) {
   return new Promise((resolve, reject) => {
@@ -44,13 +48,19 @@ function httpGetJson(urlString, headers = {}) {
   });
 }
 
-function fetchFootballData(path) {
-  return httpGetJson(`https://api.football-data.org${path}`, {
+async function fetchFootballData(path, retryCount = 0) {
+  const res = await httpGetJson(`https://api.football-data.org${path}`, {
     'X-Auth-Token': FOOTBALL_DATA_KEY.trim()
   });
-}
 
-const sleep = ms => new Promise(r => setTimeout(r, ms));
+  if (res.status === 429 && retryCount < 2) {
+    console.log(`[Rate Limit 429] Attendo ${RATE_LIMIT_WAIT_MS / 1000}s prima di riprovare ${path}...`);
+    await sleep(RATE_LIMIT_WAIT_MS);
+    return fetchFootballData(path, retryCount + 1);
+  }
+
+  return res;
+}
 
 function normalizeTeamKey(name) {
   return String(name || '')
@@ -62,19 +72,36 @@ function normalizeTeamKey(name) {
     .trim();
 }
 
-/**
- * Carica classifica (TOTAL, HOME, AWAY) e forma recente (ultime 5 FINISHED)
- */
+function normalizeRoleTag(rawPos) {
+  const pos = String(rawPos || '').trim().toLowerCase();
+  if (!pos) return 'midfield';
+
+  if (pos === 'por' || pos === 'gk' || pos.includes('goal')) return 'goalkeeper';
+  if (pos === 'dif' || pos.includes('def') || pos.includes('back')) return 'defence';
+  if (
+    pos === 'att' ||
+    pos.includes('off') ||
+    pos.includes('forw') ||
+    pos.includes('attac') ||
+    pos.includes('wing') ||
+    pos.includes('strik')
+  ) {
+    return 'offence';
+  }
+  if (pos === 'cen' || pos.includes('mid')) return 'midfield';
+
+  return pos;
+}
+
 async function buildLeagueAnalytics(compCode) {
   const analytics = {
     avgHomeGoals: 1.48,
     avgAwayGoals: 1.18,
-    teams: new Map() // teamId -> stats
+    teams: new Map()
   };
 
-  // 1. Classifica
   const standRes = await fetchFootballData(`/v4/competitions/${compCode}/standings`);
-  await sleep(6500);
+  await sleep(REQUEST_SPACING_MS);
 
   if (standRes.status === 200 && Array.isArray(standRes.body?.standings)) {
     const totalTable = standRes.body.standings.find(s => s.type === 'TOTAL')?.table || [];
@@ -125,9 +152,8 @@ async function buildLeagueAnalytics(compCode) {
     }
   }
 
-  // 2. Ultime partite concluse per forma recente (ultime 5 gare per squadra)
   const finRes = await fetchFootballData(`/v4/competitions/${compCode}/matches?status=FINISHED`);
-  await sleep(6500);
+  await sleep(REQUEST_SPACING_MS);
 
   if (finRes.status === 200 && Array.isArray(finRes.body?.matches)) {
     const finished = finRes.body.matches
@@ -182,9 +208,6 @@ async function buildLeagueAnalytics(compCode) {
   return analytics;
 }
 
-/**
- * Quote reali opzionali da The Odds API (se ODDS_API_KEY è impostata)
- */
 async function fetchMarketOddsMap(oddsSportKey) {
   const map = new Map();
   if (!ODDS_API_KEY || !oddsSportKey) return map;
@@ -271,25 +294,21 @@ function computeMatchPrediction(homeId, awayId, homeName, awayName, analytics, m
     const aAttack = aStats.awayGfPg / avgA;
     const hDefense = hStats.homeGaPg / avgA;
 
-    // Media pesata tra rendimento stagionale e forma recente (ultime 5)
     const hRecentAttack = hStats.recentGfPg != null ? (hStats.recentGfPg / ((avgH + avgA) / 2)) : hAttack;
     const aRecentAttack = aStats.recentGfPg != null ? (aStats.recentGfPg / ((avgH + avgA) / 2)) : aAttack;
 
     const effHAttack = 0.72 * hAttack + 0.28 * hRecentAttack;
     const effAAttack = 0.72 * aAttack + 0.28 * aRecentAttack;
 
-    // Aggiustamento leggero sulla forma recente (Punti ultime 5)
     const formDiff = (hStats.recentFormRatio - aStats.recentFormRatio) * 0.22;
 
     lambdaHome = Math.min(3.4, Math.max(0.45, effHAttack * aDefense * avgH * (1 + formDiff)));
     lambdaAway = Math.min(3.1, Math.max(0.35, effAAttack * hDefense * avgA * (1 - formDiff)));
   } else {
-    // Fallback solo per coppe/squadre senza classifica (es. turni preliminari)
     lambdaHome = Number((1.15 + ((fallbackSeed % 11) / 10)).toFixed(2));
     lambdaAway = Number((0.95 + (((fallbackSeed >>> 4) % 10) / 10)).toFixed(2));
   }
 
-  // Calcolo matrice Poisson (0..6 gol per squadra)
   let pHome = 0;
   let pDraw = 0;
   let pAway = 0;
@@ -318,13 +337,11 @@ function computeMatchPrediction(homeId, awayId, homeName, awayName, analytics, m
     }
   }
 
-  // Normalizzazione somma 1X2
   const sum1x2 = pHome + pDraw + pAway || 1;
   pHome /= sum1x2;
   pDraw /= sum1x2;
   pAway /= sum1x2;
 
-  // Blend con quote reali di mercato se disponibili (55% Mercato + 45% Modello Poisson)
   const marketKey = `${normalizeTeamKey(homeName)}|${normalizeTeamKey(awayName)}`;
   const market = marketOddsMap.get(marketKey);
   if (market) {
@@ -405,7 +422,7 @@ async function getTeamSquad(teamId) {
   if (!teamId) return [];
   if (squadCache.has(teamId)) return squadCache.get(teamId);
 
-  await sleep(6500);
+  await sleep(REQUEST_SPACING_MS);
   const res = await fetchFootballData(`/v4/teams/${teamId}`);
   if (res.status !== 200 || !Array.isArray(res.body?.squad)) {
     console.log(`[Team ${teamId}] Impossibile leggere la rosa (${res.status})`);
@@ -446,9 +463,8 @@ function normalizeStartXI(rawPlayers) {
 
 function buildProbableEleven(squad, teamName, formation, seed) {
   const getByRole = (roles, count, offset) => {
-    const matching = squad.filter(p =>
-      roles.some(r => String(p.position || '').toLowerCase().includes(r))
-    );
+    const targetRoles = roles.map(r => normalizeRoleTag(r));
+    const matching = squad.filter(p => targetRoles.includes(normalizeRoleTag(p.position)));
     const pool = matching.length ? matching : squad;
     if (!pool.length) {
       return Array.from({ length: count }, (_, i) => ({
@@ -479,9 +495,9 @@ function buildProbableEleven(squad, teamName, formation, seed) {
 
   const is352 = formation === '3-5-2';
   const gk = getByRole(['goalkeeper'], 1, 1);
-  const def = getByRole(['defence', 'defender'], is352 ? 3 : 4, 2);
-  const mid = getByRole(['midfield', 'midfielder'], is352 ? 5 : 3, 6);
-  const att = getByRole(['offence', 'forward', 'attacker', 'winger'], is352 ? 2 : 3, 9);
+  const def = getByRole(['defence'], is352 ? 3 : 4, 2);
+  const mid = getByRole(['midfield'], is352 ? 5 : 3, 6);
+  const att = getByRole(['offence'], is352 ? 2 : 3, 9);
 
   return [
     ...gk.map((p, i) => ({ pos: 'POR', name: p.name, number: p.shirtNumber || (i + 1) })),
@@ -503,8 +519,8 @@ function resolveLineups(matchObj, homeTeam, awayTeam, homeSquad, awaySquad, seed
   if (hasOfficial) {
     return {
       isOfficial: true,
-      homePlayers: homeXI.map(p => ({ name: p.name, position: p.pos })),
-      awayPlayers: awayXI.map(p => ({ name: p.name, position: p.pos })),
+      homePlayers: homeXI.map(p => ({ name: p.name, position: normalizeRoleTag(p.pos) })),
+      awayPlayers: awayXI.map(p => ({ name: p.name, position: normalizeRoleTag(p.pos) })),
       lineups: {
         home: {
           teamName: homeTeam,
@@ -528,15 +544,10 @@ function resolveLineups(matchObj, homeTeam, awayTeam, homeSquad, awaySquad, seed
   const probHomeXI = buildProbableEleven(homeSquad, homeTeam, homeFormation, seed);
   const probAwayXI = buildProbableEleven(awaySquad, awayTeam, awayFormation, seed + 13);
 
-  const mapPos = (pos) =>
-    pos === 'ATT' ? 'offence' :
-    pos === 'CEN' ? 'midfield' :
-    pos === 'DIF' ? 'defence' : 'goalkeeper';
-
   return {
     isOfficial: false,
-    homePlayers: probHomeXI.map(p => ({ name: p.name, position: mapPos(p.pos) })),
-    awayPlayers: probAwayXI.map(p => ({ name: p.name, position: mapPos(p.pos) })),
+    homePlayers: probHomeXI.map(p => ({ name: p.name, position: normalizeRoleTag(p.pos) })),
+    awayPlayers: probAwayXI.map(p => ({ name: p.name, position: normalizeRoleTag(p.pos) })),
     lineups: {
       home: {
         teamName: homeTeam,
@@ -555,13 +566,13 @@ function resolveLineups(matchObj, homeTeam, awayTeam, homeSquad, awaySquad, seed
 }
 
 function pickPlayersByRole(poolSource, teamName, roles, count, seedOffset = 0) {
-  const normalizedRoles = roles.map(r => r.toLowerCase());
-  const matching = poolSource.filter(p => {
-    const pos = String(p.position || '').toLowerCase();
-    return normalizedRoles.some(role => pos.includes(role));
-  });
+  const targetRoles = roles.map(r => normalizeRoleTag(r));
+  const matching = poolSource.filter(p => targetRoles.includes(normalizeRoleTag(p.position)));
 
-  const pool = matching.length >= count ? matching : (poolSource.length ? poolSource : []);
+  const pool = matching.length >= count
+    ? matching
+    : (matching.length ? [...matching, ...poolSource] : (poolSource.length ? poolSource : []));
+
   if (!pool.length) {
     return Array.from({ length: count }, (_, idx) => `${teamName} - Giocatore ${idx + 1}`);
   }
@@ -616,15 +627,18 @@ function buildTabData(matchObj, homeTeam, awayTeam, homeId, awayId, homeSquad, a
   );
 
   const lineupInfo = resolveLineups(matchObj, homeTeam, awayTeam, homeSquad, awaySquad, h);
-  const homePool = lineupInfo.homePlayers.length ? lineupInfo.homePlayers : homeSquad;
-  const awayPool = lineupInfo.awayPlayers.length ? lineupInfo.awayPlayers : awaySquad;
+  const homePool = lineupInfo.isOfficial && lineupInfo.homePlayers.length
+    ? lineupInfo.homePlayers
+    : (lineupInfo.homePlayers.length ? lineupInfo.homePlayers : homeSquad);
+  const awayPool = lineupInfo.isOfficial && lineupInfo.awayPlayers.length
+    ? lineupInfo.awayPlayers
+    : (lineupInfo.awayPlayers.length ? lineupInfo.awayPlayers : awaySquad);
 
-  const homeAttackers = pickPlayersByRole(homePool, homeTeam, ['offence', 'forward', 'attacker', 'winger', 'att', 'fwd'], 2, h % 97);
-  const awayAttackers = pickPlayersByRole(awayPool, awayTeam, ['offence', 'forward', 'attacker', 'winger', 'att', 'fwd'], 2, (h >>> 4) % 97);
-  const homeCardCandidates = pickPlayersByRole(homePool, homeTeam, ['midfield', 'defence', 'defender', 'midfielder', 'mid', 'def'], 2, (h >>> 8) % 97);
-  const awayCardCandidates = pickPlayersByRole(awayPool, awayTeam, ['midfield', 'defence', 'defender', 'midfielder', 'mid', 'def'], 2, (h >>> 12) % 97);
+  const homeAttackers = pickPlayersByRole(homePool, homeTeam, ['offence', 'midfield'], 2, h % 97);
+  const awayAttackers = pickPlayersByRole(awayPool, awayTeam, ['offence', 'midfield'], 2, (h >>> 4) % 97);
+  const homeCardCandidates = pickPlayersByRole(homePool, homeTeam, ['midfield', 'defence'], 2, (h >>> 8) % 97);
+  const awayCardCandidates = pickPlayersByRole(awayPool, awayTeam, ['midfield', 'defence'], 2, (h >>> 12) % 97);
 
-  // Probabilità marcatori/tiri coerenti con i gol attesi (expectedGoals) del match
   const homeGoalFactor = Math.min(22, Math.round(prediction.expectedGoals.home * 11));
   const awayGoalFactor = Math.min(22, Math.round(prediction.expectedGoals.away * 11));
   const bonusOfficial = lineupInfo.isOfficial ? 4 : 0;
@@ -710,7 +724,7 @@ async function run() {
 
     if (res.status !== 200 || !Array.isArray(res.body?.matches)) {
       console.log(`[${comp.name}] Risposta API ${res.status}:`, JSON.stringify(res.body?.message || res.body || {}));
-      await sleep(6500);
+      await sleep(REQUEST_SPACING_MS);
       continue;
     }
 
@@ -718,11 +732,10 @@ async function run() {
     console.log(`[${comp.name}] Partite trovate: ${matches.length}`);
 
     if (matches.length === 0) {
-      await sleep(6500);
+      await sleep(REQUEST_SPACING_MS);
       continue;
     }
 
-    // Carica classifica + ultimi risultati reali + eventuali quote di mercato per questo campionato
     const analytics = await buildLeagueAnalytics(comp.code);
     const marketOddsMap = await fetchMarketOddsMap(comp.oddsKey);
 
@@ -767,7 +780,7 @@ async function run() {
       });
     }
 
-    await sleep(6500);
+    await sleep(REQUEST_SPACING_MS);
   }
 
   if (allMatches.length === 0) {
