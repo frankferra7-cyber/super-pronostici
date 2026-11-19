@@ -17,92 +17,236 @@ const COMPETITIONS = [
   { name: 'Champions League', code: 'CL' }
 ];
 
-const SQUAD_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 ore di cache su Supabase
 const squadCache = new Map();
 
-function fetchFootballData(path) {
+// Mappa di normalizzazione nomi squadre Serie A (API <-> Fonti italiane)
+const SERIE_A_ALIASES = {
+  atalanta: ['atalanta', 'atalanta bc'],
+  bologna: ['bologna', 'bologna fc', 'bologna fc 1909'],
+  cagliari: ['cagliari', 'cagliari calcio'],
+  como: ['como', 'como 1907'],
+  cremonese: ['cremonese', 'us cremonese'],
+  empoli: ['empoli', 'empoli fc'],
+  fiorentina: ['fiorentina', 'acf fiorentina'],
+  genoa: ['genoa', 'genoa cfc'],
+  inter: ['inter', 'internazionale', 'fc internazionale milano'],
+  juventus: ['juventus', 'juventus fc'],
+  lazio: ['lazio', 'ss lazio'],
+  lecce: ['lecce', 'us lecce'],
+  milan: ['milan', 'ac milan'],
+  monza: ['monza', 'ac monza'],
+  napoli: ['napoli', 'ssc napoli'],
+  parma: ['parma', 'parma calcio', 'parma calcio 1913'],
+  pisa: ['pisa', 'pisa sc'],
+  roma: ['roma', 'as roma'],
+  salernitana: ['salernitana', 'us salernitana'],
+  sampdoria: ['sampdoria', 'uc sampdoria'],
+  sassuolo: ['sassuolo', 'us sassuolo'],
+  spezia: ['spezia', 'spezia calcio'],
+  torino: ['torino', 'torino fc'],
+  udinese: ['udinese', 'udinese calcio'],
+  venezia: ['venezia', 'venezia fc'],
+  verona: ['verona', 'hellas verona', 'hellas verona fc']
+};
+
+function canonicalTeamKey(rawName) {
+  const clean = String(rawName || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  for (const [canonical, aliases] of Object.entries(SERIE_A_ALIASES)) {
+    if (aliases.some(a => clean === a || clean.includes(a))) {
+      return canonical;
+    }
+  }
+  return clean;
+}
+
+function fetchUrl(urlString, extraHeaders = {}, redirectDepth = 0) {
   return new Promise((resolve, reject) => {
+    if (redirectDepth > 4) {
+      return reject(new Error(`Troppi redirect per ${urlString}`));
+    }
+    const parsed = new URL(urlString);
     const options = {
-      hostname: 'api.football-data.org',
-      path,
+      hostname: parsed.hostname,
+      path: `${parsed.pathname}${parsed.search}`,
       method: 'GET',
       headers: {
-        'X-Auth-Token': FOOTBALL_DATA_KEY.trim()
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+        'Accept-Language': 'it-IT,it;q=0.9,en;q=0.8',
+        ...extraHeaders
       }
     };
 
     https.get(options, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        const nextUrl = new URL(res.headers.location, urlString).toString();
+        res.resume();
+        return resolve(fetchUrl(nextUrl, extraHeaders, redirectDepth + 1));
+      }
+
       let data = '';
       res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try {
-          resolve({ status: res.statusCode, body: JSON.parse(data) });
-        } catch (err) {
-          reject(new Error(`Risposta non JSON (${res.statusCode}): ${data.slice(0, 200)}`));
-        }
-      });
+      res.on('end', () => resolve({ status: res.statusCode, body: data }));
     }).on('error', reject);
   });
 }
 
-function supabaseRequest(method, pathWithQuery, payload = null) {
-  return new Promise((resolve, reject) => {
-    const baseUrl = new URL(SUPABASE_URL);
-    const fullPath = `${baseUrl.pathname.replace(/\/$/, '')}${pathWithQuery}`;
-    const body = payload ? JSON.stringify(payload) : null;
+async function fetchFootballData(path) {
+  const res = await fetchUrl(`https://api.football-data.org${path}`, {
+    'X-Auth-Token': FOOTBALL_DATA_KEY.trim(),
+    'Accept': 'application/json'
+  });
+  try {
+    return { status: res.status, body: JSON.parse(res.body) };
+  } catch {
+    throw new Error(`Risposta non JSON (${res.status}): ${res.body.slice(0, 200)}`);
+  }
+}
 
-    const options = {
-      hostname: baseUrl.hostname,
-      path: fullPath,
-      method,
-      headers: {
-        'apikey': SUPABASE_SECRET_KEY,
-        'Authorization': `Bearer ${SUPABASE_SECRET_KEY}`,
-        'Content-Type': 'application/json',
-        ...(method === 'POST' ? { 'Prefer': 'resolution=merge-duplicates' } : {})
-      }
+function stripTags(html) {
+  return String(html || '')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&quot;/gi, '"')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function assignRolesByFormation(players, formation) {
+  const parts = String(formation || '4-3-3')
+    .split('-')
+    .map(n => parseInt(n, 10))
+    .filter(n => !isNaN(n) && n > 0);
+
+  const defCount = parts[0] || 4;
+  const attCount = parts.length >= 2 ? parts[parts.length - 1] : 3;
+  const midCount = Math.max(1, 10 - defCount - attCount);
+
+  return players.slice(0, 11).map((name, idx) => {
+    let pos = 'CEN';
+    if (idx === 0) pos = 'POR';
+    else if (idx <= defCount) pos = 'DIF';
+    else if (idx <= defCount + midCount) pos = 'CEN';
+    else pos = 'ATT';
+
+    return {
+      pos,
+      name: name.trim(),
+      number: idx + 1
     };
-
-    const req = https.request(options, (res) => {
-      let responseData = '';
-      res.on('data', chunk => responseData += chunk);
-      res.on('end', () => {
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-          try {
-            resolve(responseData ? JSON.parse(responseData) : null);
-          } catch {
-            resolve(null);
-          }
-        } else {
-          reject(new Error(`Errore Supabase (${res.statusCode}): ${responseData}`));
-        }
-      });
-    });
-
-    req.on('error', reject);
-    if (body) req.write(body);
-    req.end();
   });
 }
 
-const sleep = ms => new Promise(r => setTimeout(r, ms));
+/**
+ * Estrae le probabili formazioni reali di Serie A da Fantacalcio.it
+ * Ritorna una Map con chiave "homeCanonical|awayCanonical"
+ */
+async function fetchSerieAProbableLineups() {
+  const lineupMap = new Map();
+  const sources = [
+    'https://www.fantacalcio.it/probabili-formazioni-serie-a',
+    'https://sport.sky.it/calcio/serie-a/probabili-formazioni'
+  ];
 
-async function fetchExistingMatchesMap(dateFromIso, dateToIso) {
-  try {
-    const query = `/rest/v1/matches?select=id,kickoff,prediction,player_stats,lineups,updated_at&kickoff=gte.${encodeURIComponent(dateFromIso)}&kickoff=lte.${encodeURIComponent(dateToIso)}`;
-    const rows = await supabaseRequest('GET', query);
-    const map = new Map();
-    if (Array.isArray(rows)) {
-      for (const row of rows) {
-        if (row?.id != null) map.set(String(row.id), row);
+  for (const url of sources) {
+    try {
+      const res = await fetchUrl(url, {
+        'Accept': 'text/html,application/xhtml+xml'
+      });
+
+      if (res.status !== 200 || !res.body) {
+        console.log(`[Serie A Scraper] ${url} -> status ${res.status}`);
+        continue;
       }
+
+      const html = res.body;
+
+      // Pattern 1: blocchi match con nomi squadre e liste titolari (Fantacalcio / Sky)
+      const matchBlocks = html.split(/(?=<(?:article|section|div)[^>]+class="[^"]*(?:match|incontro|probabili|lineup-card)[^"]*")/i);
+
+      for (const block of matchBlocks) {
+        if (block.length < 200 || block.length > 60000) continue;
+
+        // Estrae eventuali moduli tipo 3-5-2, 4-3-3, 4-2-3-1
+        const formationsFound = [...block.matchAll(/\b([345]-[12345]-[12345](?:-[12])?)\b/g)].map(m => m[1]);
+
+        // Estrae i link/nomi dei giocatori dentro contenitori titolari
+        const playerCandidates = [];
+        const playerRegex = /<(?:a|span|div|li)[^>]*class="[^"]*(?:player-name|nome-giocatore|player|calciatore)[^"]*"[^>]*>([\s\S]*?)<\/(?:a|span|div|li)>/gi;
+        let pMatch;
+        while ((pMatch = playerRegex.exec(block)) !== null) {
+          const cleanName = stripTags(pMatch[1]);
+          if (
+            cleanName.length >= 3 &&
+            cleanName.length <= 28 &&
+            !/\d+%/.test(cleanName) &&
+            !playerCandidates.includes(cleanName)
+          ) {
+            playerCandidates.push(cleanName);
+          }
+        }
+
+        // Individua le due squadre presenti nel blocco
+        const blockText = stripTags(block).toLowerCase();
+        const foundTeams = [];
+        for (const [canonical, aliases] of Object.entries(SERIE_A_ALIASES)) {
+          let firstPos = Infinity;
+          for (const alias of aliases) {
+            const idx = blockText.search(new RegExp(`\\b${alias}\\b`, 'i'));
+            if (idx !== -1 && idx < firstPos) firstPos = idx;
+          }
+          if (firstPos !== Infinity) {
+            foundTeams.push({ canonical, pos: firstPos });
+          }
+        }
+
+        foundTeams.sort((a, b) => a.pos - b.pos);
+
+        if (foundTeams.length >= 2 && playerCandidates.length >= 22) {
+          const homeKey = foundTeams[0].canonical;
+          const awayKey = foundTeams[1].canonical;
+          const pairKey = `${homeKey}|${awayKey}`;
+
+          if (!lineupMap.has(pairKey)) {
+            const homeFormation = formationsFound[0] || '4-3-3';
+            const awayFormation = formationsFound[1] || formationsFound[0] || '4-2-3-1';
+
+            const homeRaw = playerCandidates.slice(0, 11);
+            const awayRaw = playerCandidates.slice(11, 22);
+
+            lineupMap.set(pairKey, {
+              homeFormation,
+              awayFormation,
+              homeXI: assignRolesByFormation(homeRaw, homeFormation),
+              awayXI: assignRolesByFormation(awayRaw, awayFormation)
+            });
+          }
+        }
+      }
+
+      if (lineupMap.size > 0) {
+        console.log(`[Serie A Scraper] Probabili formazioni reali estratte: ${lineupMap.size} partite da ${url}`);
+        break;
+      }
+    } catch (err) {
+      console.log(`[Serie A Scraper] Errore su ${url}:`, err.message);
     }
-    return map;
-  } catch (err) {
-    console.log("Avviso lettura match esistenti da Supabase:", err.message);
-    return new Map();
   }
+
+  return lineupMap;
 }
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function isEligiblePlayer(player) {
   if (!player || !player.name) return false;
@@ -114,6 +258,11 @@ function isEligiblePlayer(player) {
     status.includes('doubt')
   ) {
     return false;
+  }
+  // Filtra giovani aggregati Primavera (nati dal 2007 in poi) se c'è data di nascita
+  if (player.dateOfBirth) {
+    const birthYear = parseInt(String(player.dateOfBirth).slice(0, 4), 10);
+    if (!isNaN(birthYear) && birthYear >= 2007) return false;
   }
   return true;
 }
@@ -127,20 +276,10 @@ function sortSquadRealistically(squad) {
   });
 }
 
-async function getTeamSquad(teamId, existingRow = null) {
+async function getTeamSquad(teamId) {
   if (!teamId) return [];
   if (squadCache.has(teamId)) {
     return squadCache.get(teamId);
-  }
-
-  // Se il match su Supabase è già stato aggiornato di recente (meno di 12h) e ha una formazione, riusa i giocatori esistenti
-  if (existingRow?.updated_at) {
-    const ageMs = Date.now() - new Date(existingRow.updated_at).getTime();
-    const cachedHomeXI = existingRow?.lineups?.home?.startXI;
-    const cachedAwayXI = existingRow?.lineups?.away?.startXI;
-    if (ageMs < SQUAD_CACHE_TTL_MS && Array.isArray(cachedHomeXI) && cachedHomeXI.length >= 11 && Array.isArray(cachedAwayXI) && cachedAwayXI.length >= 11) {
-      return null; // Segnala che possiamo riusare la formazione già salvata
-    }
   }
 
   await sleep(6500);
@@ -166,23 +305,7 @@ function hashSeed(homeTeam, awayTeam, matchId) {
   return Math.abs(hash >>> 0);
 }
 
-function normalizeStartXI(rawPlayers) {
-  if (!Array.isArray(rawPlayers)) return [];
-  return rawPlayers
-    .map((p, idx) => {
-      const name = p?.name || p?.player?.name;
-      if (!name) return null;
-      return {
-        pos: p?.position || p?.pos || 'P',
-        name,
-        number: p?.shirtNumber ?? p?.number ?? (idx + 1)
-      };
-    })
-    .filter(Boolean);
-}
-
-// Selezione stabile per ruolo: mantiene i profili principali in ordine di maglia e ruota solo 1 posto di ballottaggio
-function buildProbableEleven(squad, teamName, formation, seed) {
+function buildProbableElevenFallback(squad, teamName, formation, seed) {
   const getByRole = (roles, count, rotationSlot) => {
     const matching = squad.filter(p =>
       roles.some(r => String(p.position || '').toLowerCase().includes(r))
@@ -201,7 +324,6 @@ function buildProbableEleven(squad, teamName, formation, seed) {
 
     for (let i = 0; i < count; i++) {
       let candidate = baseSlice[i % baseSlice.length];
-      // Solo sull'ultimo slot del reparto applichiamo una leggera rotazione tra i ballottaggi
       if (i === count - 1 && baseSlice.length > count) {
         candidate = baseSlice[(count - 1 + (seed % 2)) % baseSlice.length];
       }
@@ -236,89 +358,46 @@ function buildProbableEleven(squad, teamName, formation, seed) {
   ];
 }
 
-function resolveLineups(matchObj, homeTeam, awayTeam, homeSquad, awaySquad, existingRow, seed) {
-  const alreadyOfficial =
-    Boolean(existingRow?.lineups?.home?.isOfficial) &&
-    Boolean(existingRow?.lineups?.away?.isOfficial) &&
-    Array.isArray(existingRow?.lineups?.home?.startXI) &&
-    existingRow.lineups.home.startXI.length >= 11 &&
-    Array.isArray(existingRow?.lineups?.away?.startXI) &&
-    existingRow.lineups.away.startXI.length >= 11;
-
-  if (alreadyOfficial) {
-    const mapPos = (pos) =>
-      pos === 'ATT' ? 'offence' :
-      pos === 'CEN' ? 'midfield' :
-      pos === 'DIF' ? 'defence' : 'goalkeeper';
-
-    return {
-      isOfficial: true,
-      homePlayers: existingRow.lineups.home.startXI.map(p => ({ name: p.name, position: mapPos(p.pos) })),
-      awayPlayers: existingRow.lineups.away.startXI.map(p => ({ name: p.name, position: mapPos(p.pos) })),
-      lineups: existingRow.lineups
-    };
-  }
-
-  const rawHomeXI = matchObj?.homeTeam?.lineup || matchObj?.lineups?.home?.startXI || [];
-  const rawAwayXI = matchObj?.awayTeam?.lineup || matchObj?.lineups?.away?.startXI || [];
-
-  const homeXI = normalizeStartXI(rawHomeXI);
-  const awayXI = normalizeStartXI(rawAwayXI);
-  const hasOfficialNow = homeXI.length >= 7 && awayXI.length >= 7;
-
-  if (hasOfficialNow) {
-    return {
-      isOfficial: true,
-      homePlayers: homeXI.map(p => ({ name: p.name, position: p.pos })),
-      awayPlayers: awayXI.map(p => ({ name: p.name, position: p.pos })),
-      lineups: {
-        home: {
-          teamName: homeTeam,
-          formation: matchObj?.homeTeam?.formation || ((seed % 2) === 0 ? "4-3-3" : "3-5-2"),
-          isOfficial: true,
-          startXI: homeXI
-        },
-        away: {
-          teamName: awayTeam,
-          formation: matchObj?.awayTeam?.formation || (((seed >>> 1) % 2) === 0 ? "4-2-3-1" : "4-4-2"),
-          isOfficial: true,
-          startXI: awayXI
-        }
-      }
-    };
-  }
-
-  // Se abbiamo già una probabile formazione valida in cache e nessuna nuova rosa scaricata, riusala
-  if (homeSquad === null && awaySquad === null && existingRow?.lineups?.home?.startXI && existingRow?.lineups?.away?.startXI) {
-    const mapPos = (pos) =>
-      pos === 'ATT' ? 'offence' :
-      pos === 'CEN' ? 'midfield' :
-      pos === 'DIF' ? 'defence' : 'goalkeeper';
-
-    return {
-      isOfficial: false,
-      homePlayers: existingRow.lineups.home.startXI.map(p => ({ name: p.name, position: mapPos(p.pos) })),
-      awayPlayers: existingRow.lineups.away.startXI.map(p => ({ name: p.name, position: mapPos(p.pos) })),
-      lineups: existingRow.lineups
-    };
-  }
-
-  const safeHomeSquad = Array.isArray(homeSquad) ? homeSquad : [];
-  const safeAwaySquad = Array.isArray(awaySquad) ? awaySquad : [];
-
-  const homeFormation = (seed % 2) === 0 ? "4-3-3" : "3-5-2";
-  const awayFormation = ((seed >>> 1) % 2) === 0 ? "4-3-3" : "3-5-2";
-
-  const probHomeXI = buildProbableEleven(safeHomeSquad, homeTeam, homeFormation, seed);
-  const probAwayXI = buildProbableEleven(safeAwaySquad, awayTeam, awayFormation, seed + 13);
-
+function resolveLineups(homeTeam, awayTeam, homeSquad, awaySquad, scrapedMatch, seed) {
   const mapPos = (pos) =>
     pos === 'ATT' ? 'offence' :
     pos === 'CEN' ? 'midfield' :
     pos === 'DIF' ? 'defence' : 'goalkeeper';
 
+  // Priorità 1: Probabili formazioni reali estratte per la Serie A
+  if (scrapedMatch && scrapedMatch.homeXI?.length === 11 && scrapedMatch.awayXI?.length === 11) {
+    return {
+      isOfficial: false,
+      isRealProbable: true,
+      homePlayers: scrapedMatch.homeXI.map(p => ({ name: p.name, position: mapPos(p.pos) })),
+      awayPlayers: scrapedMatch.awayXI.map(p => ({ name: p.name, position: mapPos(p.pos) })),
+      lineups: {
+        home: {
+          teamName: homeTeam,
+          formation: scrapedMatch.homeFormation,
+          isOfficial: false,
+          startXI: scrapedMatch.homeXI
+        },
+        away: {
+          teamName: awayTeam,
+          formation: scrapedMatch.awayFormation,
+          isOfficial: false,
+          startXI: scrapedMatch.awayXI
+        }
+      }
+    };
+  }
+
+  // Priorità 2: Fallback dalla rosa filtrata per gli altri campionati
+  const homeFormation = (seed % 2) === 0 ? "4-3-3" : "3-5-2";
+  const awayFormation = ((seed >>> 1) % 2) === 0 ? "4-3-3" : "3-5-2";
+
+  const probHomeXI = buildProbableElevenFallback(homeSquad, homeTeam, homeFormation, seed);
+  const probAwayXI = buildProbableElevenFallback(awaySquad, awayTeam, awayFormation, seed + 13);
+
   return {
     isOfficial: false,
+    isRealProbable: false,
     homePlayers: probHomeXI.map(p => ({ name: p.name, position: mapPos(p.pos) })),
     awayPlayers: probAwayXI.map(p => ({ name: p.name, position: mapPos(p.pos) })),
     lineups: {
@@ -386,13 +465,12 @@ function ensureNonEmptyPlayerList(list, fallbackTeam, fallbackNames, seed) {
   }));
 }
 
-function buildTabData(matchObj, homeTeam, awayTeam, homeSquad, awaySquad, existingRow, matchId) {
+function buildTabData(homeTeam, awayTeam, homeSquad, awaySquad, scrapedMatch, matchId) {
   const h = hashSeed(homeTeam, awayTeam, matchId);
-  const lineupInfo = resolveLineups(matchObj, homeTeam, awayTeam, homeSquad, awaySquad, existingRow, h);
+  const lineupInfo = resolveLineups(homeTeam, awayTeam, homeSquad, awaySquad, scrapedMatch, h);
 
-  const officialShift = lineupInfo.isOfficial ? 3 : 0;
-  const homeWeight = Math.min(82, 22 + (h % 51) + officialShift);
-  const awayWeight = Math.min(80, 18 + ((h >>> 8) % 47) + officialShift);
+  const homeWeight = 22 + (h % 51);
+  const awayWeight = 18 + ((h >>> 8) % 47);
   const drawWeight = 14 + ((h >>> 16) % 21);
 
   const sum = homeWeight + awayWeight + drawWeight;
@@ -402,12 +480,12 @@ function buildTabData(matchObj, homeTeam, awayTeam, homeSquad, awaySquad, existi
   const diff = 100 - (homePct + drawPct + awayPct);
   const finalHome = homePct + diff;
 
-  const over25 = Math.min(88, 38 + ((h >>> 5) % 41) + (lineupInfo.isOfficial ? 2 : 0));
+  const over25 = 38 + ((h >>> 5) % 41);
   const under25 = 100 - over25;
-  const bothTeamsToScore = Math.min(88, 36 + ((h >>> 11) % 43) + (lineupInfo.isOfficial ? 2 : 0));
+  const bothTeamsToScore = 36 + ((h >>> 11) % 43);
 
-  const expHome = Number((0.7 + ((h % 19) / 10) + (lineupInfo.isOfficial ? 0.1 : 0)).toFixed(1));
-  const expAway = Number((0.6 + (((h >>> 7) % 18) / 10) + (lineupInfo.isOfficial ? 0.1 : 0)).toFixed(1));
+  const expHome = Number((0.7 + ((h % 19) / 10)).toFixed(1));
+  const expAway = Number((0.6 + (((h >>> 7) % 18) / 10)).toFixed(1));
 
   let mostLikelyOutcome = "X";
   if (finalHome >= awayPct && finalHome >= drawPct) mostLikelyOutcome = "1";
@@ -435,30 +513,28 @@ function buildTabData(matchObj, homeTeam, awayTeam, homeSquad, awaySquad, existi
     likelyScore
   };
 
-  const homePool = lineupInfo.homePlayers.length ? lineupInfo.homePlayers : (Array.isArray(homeSquad) ? homeSquad : []);
-  const awayPool = lineupInfo.awayPlayers.length ? lineupInfo.awayPlayers : (Array.isArray(awaySquad) ? awaySquad : []);
+  const homePool = lineupInfo.homePlayers.length ? lineupInfo.homePlayers : homeSquad;
+  const awayPool = lineupInfo.awayPlayers.length ? lineupInfo.awayPlayers : awaySquad;
 
   const homeAttackers = pickPlayersByRole(homePool, homeTeam, ['offence', 'forward', 'attacker', 'winger', 'att', 'fwd'], 2, h % 97);
   const awayAttackers = pickPlayersByRole(awayPool, awayTeam, ['offence', 'forward', 'attacker', 'winger', 'att', 'fwd'], 2, (h >>> 4) % 97);
   const homeCardCandidates = pickPlayersByRole(homePool, homeTeam, ['midfield', 'defence', 'defender', 'midfielder', 'mid', 'def'], 2, (h >>> 8) % 97);
   const awayCardCandidates = pickPlayersByRole(awayPool, awayTeam, ['midfield', 'defence', 'defender', 'midfielder', 'mid', 'def'], 2, (h >>> 12) % 97);
 
-  const bonusOfficial = lineupInfo.isOfficial ? 5 : 0;
-
   const rawMarcatori = [
-    { name: homeAttackers[0], team: homeTeam, prob: `${Math.min(95, 22 + (h % 34) + bonusOfficial)}%` },
-    { name: homeAttackers[1] || homeAttackers[0], team: homeTeam, prob: `${Math.min(95, 15 + ((h >>> 3) % 26) + bonusOfficial)}%` },
-    { name: awayAttackers[0], team: awayTeam, prob: `${Math.min(95, 20 + ((h >>> 6) % 33) + bonusOfficial)}%` }
+    { name: homeAttackers[0], team: homeTeam, prob: `${Math.min(95, 22 + (h % 34))}%` },
+    { name: homeAttackers[1] || homeAttackers[0], team: homeTeam, prob: `${Math.min(95, 15 + ((h >>> 3) % 26))}%` },
+    { name: awayAttackers[0], team: awayTeam, prob: `${Math.min(95, 20 + ((h >>> 6) % 33))}%` }
   ];
 
   const rawAmmoniti = [
-    { name: homeCardCandidates[0], team: homeTeam, prob: `${Math.min(95, 18 + ((h >>> 9) % 28) + bonusOfficial)}%` },
-    { name: awayCardCandidates[0], team: awayTeam, prob: `${Math.min(95, 17 + ((h >>> 13) % 28) + bonusOfficial)}%` }
+    { name: homeCardCandidates[0], team: homeTeam, prob: `${Math.min(95, 18 + ((h >>> 9) % 28))}%` },
+    { name: awayCardCandidates[0], team: awayTeam, prob: `${Math.min(95, 17 + ((h >>> 13) % 28))}%` }
   ];
 
   const rawTiri = [
-    { name: homeAttackers[0], team: homeTeam, prob: `${Math.min(98, 52 + ((h >>> 2) % 36) + bonusOfficial)}%` },
-    { name: awayAttackers[0], team: awayTeam, prob: `${Math.min(98, 48 + ((h >>> 10) % 37) + bonusOfficial)}%` }
+    { name: homeAttackers[0], team: homeTeam, prob: `${Math.min(98, 52 + ((h >>> 2) % 36))}%` },
+    { name: awayAttackers[0], team: awayTeam, prob: `${Math.min(98, 48 + ((h >>> 10) % 37))}%` }
   ];
 
   const player_stats = {
@@ -471,13 +547,41 @@ function buildTabData(matchObj, homeTeam, awayTeam, homeSquad, awaySquad, existi
     prediction,
     player_stats,
     lineups: lineupInfo.lineups,
-    isOfficial: lineupInfo.isOfficial
+    isRealProbable: lineupInfo.isRealProbable
   };
 }
 
-async function upsertToSupabase(matches) {
-  await supabaseRequest('POST', '/rest/v1/matches', matches);
-  console.log(`Salvataggio completato (${matches.length} partite).`);
+function upsertToSupabase(matches) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(`${SUPABASE_URL}/rest/v1/matches`);
+    const body = JSON.stringify(matches);
+
+    const options = {
+      hostname: url.hostname,
+      path: url.pathname,
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_SECRET_KEY,
+        'Authorization': `Bearer ${SUPABASE_SECRET_KEY}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'resolution=merge-duplicates'
+      }
+    };
+
+    const req = https.request(options, (res) => {
+      let responseData = '';
+      res.on('data', chunk => responseData += chunk);
+      res.on('end', () => {
+        console.log(`Status Supabase: ${res.statusCode}`);
+        if (res.statusCode >= 200 && res.statusCode < 300) resolve(responseData);
+        else reject(new Error(`Errore Supabase (${res.statusCode}): ${responseData}`));
+      });
+    });
+
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
 }
 
 async function run() {
@@ -488,9 +592,9 @@ async function run() {
   const dateFrom = now.toISOString().split('T')[0];
   const dateTo = future.toISOString().split('T')[0];
 
-  const existingMap = await fetchExistingMatchesMap(now.toISOString(), future.toISOString());
+  const serieALineupsMap = await fetchSerieAProbableLineups();
   const allMatches = [];
-  let officialCount = 0;
+  let realProbableCount = 0;
 
   for (const comp of COMPETITIONS) {
     const res = await fetchFootballData(
@@ -513,22 +617,17 @@ async function run() {
       const awayId = m.awayTeam?.id;
       if (!m.id || !homeName || !awayName || !m.utcDate) continue;
 
-      const existingRow = existingMap.get(String(m.id)) || null;
-      const kickoffMs = new Date(m.utcDate).getTime();
-      const minsToKickoff = (kickoffMs - Date.now()) / 60000;
+      let scrapedMatch = null;
+      if (comp.code === 'SA') {
+        const pairKey = `${canonicalTeamKey(homeName)}|${canonicalTeamKey(awayName)}`;
+        scrapedMatch = serieALineupsMap.get(pairKey) || null;
+      }
 
-      // Finestra critica: tra -15 e +90 minuti dal kickoff controlla sempre formazioni fresche
-      const isCriticalWindow = minsToKickoff >= -15 && minsToKickoff <= 90;
+      const homeSquad = scrapedMatch ? [] : await getTeamSquad(homeId);
+      const awaySquad = scrapedMatch ? [] : await getTeamSquad(awayId);
 
-      const hasOfficialPreview =
-        Array.isArray(m.homeTeam?.lineup) && m.homeTeam.lineup.length >= 7 &&
-        Array.isArray(m.awayTeam?.lineup) && m.awayTeam.lineup.length >= 7;
-
-      const homeSquad = hasOfficialPreview ? [] : await getTeamSquad(homeId, isCriticalWindow ? null : existingRow);
-      const awaySquad = hasOfficialPreview ? [] : await getTeamSquad(awayId, isCriticalWindow ? null : existingRow);
-
-      const tabData = buildTabData(m, homeName, awayName, homeSquad, awaySquad, existingRow, m.id);
-      if (tabData.isOfficial) officialCount++;
+      const tabData = buildTabData(homeName, awayName, homeSquad, awaySquad, scrapedMatch, m.id);
+      if (tabData.isRealProbable) realProbableCount++;
 
       allMatches.push({
         id: String(m.id),
@@ -551,8 +650,10 @@ async function run() {
     return;
   }
 
-  console.log(`Partite con formazioni ufficiali: ${officialCount}/${allMatches.length}`);
+  console.log(`Partite con probabili formazioni reali (Serie A): ${realProbableCount}/${allMatches.length}`);
+  console.log(`Salvataggio di ${allMatches.length} partite su Supabase...`);
   await upsertToSupabase(allMatches);
+  console.log("Sincronizzazione completata.");
 }
 
 run().catch(err => {
