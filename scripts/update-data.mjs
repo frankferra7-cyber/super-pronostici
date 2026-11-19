@@ -114,29 +114,24 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function run() {
   const allMatches = [];
   const now = new Date();
+  const future = new Date(now);
+  future.setDate(now.getDate() + 7);
+
+  const fromDate = now.toISOString().split('T')[0];
+  const toDate = future.toISOString().split('T')[0];
   const season = now.getMonth() < 7 ? now.getFullYear() - 1 : now.getFullYear();
 
-  console.log(`Stagione usata: ${season}`);
+  console.log(`Stagione: ${season} | Intervallo: ${fromDate} -> ${toDate}`);
 
   for (const comp of COMPETITIONS) {
     console.log(`\n--- ${comp.name} (ID ${comp.id}) ---`);
 
-    const roundsData = await fetchFromApi(`/fixtures/rounds?league=${comp.id}&season=${season}&current=true`);
-    if (roundsData?.errors && Object.keys(roundsData.errors).length > 0) {
-      console.log(`Errore API rounds per ${comp.name}:`, JSON.stringify(roundsData.errors));
-      continue;
-    }
+    const fixturesData = await fetchFromApi(
+      `/fixtures?league=${comp.id}&season=${season}&from=${fromDate}&to=${toDate}`
+    );
 
-    const currentRound = roundsData?.response?.[0];
-    if (!currentRound) {
-      console.log(`Nessun round corrente per ${comp.name}`);
-      continue;
-    }
-
-    console.log(`Round corrente: ${currentRound}`);
-    const fixturesData = await fetchFromApi(`/fixtures?league=${comp.id}&season=${season}&round=${encodeURIComponent(currentRound)}`);
     if (fixturesData?.errors && Object.keys(fixturesData.errors).length > 0) {
-      console.log(`Errore API fixtures per ${comp.name}:`, JSON.stringify(fixturesData.errors));
+      console.log(`Errore API per ${comp.name}:`, JSON.stringify(fixturesData.errors));
       continue;
     }
 
@@ -150,8 +145,6 @@ async function run() {
       const kickoff = fixture.fixture?.date;
 
       if (!fixtureId || !homeName || !awayName || !kickoff) continue;
-
-      console.log(`  - ${homeName} vs ${awayName} (${kickoff})`);
 
       allMatches.push({
         id: String(fixtureId),
@@ -173,13 +166,13 @@ async function run() {
   }
 
   if (allMatches.length === 0) {
-    console.log("Nessuna partita reale trovata da salvare.");
+    console.log("Nessuna partita trovata nell'intervallo selezionato.");
     return;
   }
 
-  console.log(`\nSalvataggio di ${allMatches.length} partite reali su Supabase...`);
+  console.log(`\nSalvataggio di ${allMatches.length} partite su Supabase...`);
   await upsertToSupabase(allMatches);
-  console.log("Fatto.");
+  console.log("Sincronizzazione completata.");
 }
 
 run().catch(err => {
