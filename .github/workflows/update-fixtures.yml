@@ -22,4 +22,5 @@ jobs:
           FOOTBALL_DATA_KEY: ${{ secrets.FOOTBALL_DATA_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
         run: node scripts/update-data.mjs
