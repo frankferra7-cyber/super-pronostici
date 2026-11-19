@@ -17,6 +17,8 @@ const COMPETITIONS = [
   { name: 'Champions League', code: 'CL' }
 ];
 
+const squadCache = new Map();
+
 function fetchFootballData(path) {
   return new Promise((resolve, reject) => {
     const options = {
@@ -42,6 +44,57 @@ function fetchFootballData(path) {
   });
 }
 
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function getTeamSquad(teamId) {
+  if (!teamId) return [];
+  if (squadCache.has(teamId)) {
+    return squadCache.get(teamId);
+  }
+
+  await sleep(6500); // Rispetta il limite di ~10 richieste al minuto del piano free
+  const res = await fetchFootballData(`/v4/teams/${teamId}`);
+  if (res.status !== 200 || !Array.isArray(res.body?.squad)) {
+    console.log(`[Team ${teamId}] Impossibile leggere la rosa (${res.status})`);
+    squadCache.set(teamId, []);
+    return [];
+  }
+
+  const squad = res.body.squad.filter(p => p?.name);
+  squadCache.set(teamId, squad);
+  return squad;
+}
+
+function pickPlayersByRole(squad, teamName, roles, count, seedOffset = 0) {
+  const normalizedRoles = roles.map(r => r.toLowerCase());
+  const matching = squad.filter(p => {
+    const pos = String(p.position || '').toLowerCase();
+    return normalizedRoles.some(role => pos.includes(role));
+  });
+
+  const pool = matching.length >= count ? matching : (squad.length ? squad : []);
+  if (!pool.length) {
+    return Array.from({ length: count }, (_, idx) => `${teamName} - Giocatore ${idx + 1}`);
+  }
+
+  const picked = [];
+  for (let i = 0; i < count; i++) {
+    const player = pool[(seedOffset + i * 3) % pool.length];
+    if (!picked.includes(player.name)) {
+      picked.push(player.name);
+    }
+  }
+
+  let extraIdx = 0;
+  while (picked.length < count && extraIdx < pool.length) {
+    const candidate = pool[(seedOffset + extraIdx) % pool.length].name;
+    if (!picked.includes(candidate)) picked.push(candidate);
+    extraIdx++;
+  }
+
+  return picked;
+}
+
 function seedFromMatch(homeTeam, awayTeam, matchId) {
   const idNum = Number(matchId) || 1;
   const homeSum = homeTeam.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
@@ -49,7 +102,7 @@ function seedFromMatch(homeTeam, awayTeam, matchId) {
   return Math.abs(idNum * 13 + homeSum * 5 - awaySum * 3) % 100;
 }
 
-function buildTabData(homeTeam, awayTeam, matchId) {
+function buildTabData(homeTeam, awayTeam, homeSquad, awaySquad, matchId) {
   const seed = seedFromMatch(homeTeam, awayTeam, matchId);
 
   let homePct = 28 + (seed % 42);
@@ -86,20 +139,24 @@ function buildTabData(homeTeam, awayTeam, matchId) {
     likelyScore: hFin > aFin + 10 ? "2-1" : (aFin > hFin + 10 ? "1-2" : "1-1")
   };
 
-  // Chiavi allineate a index.html: name, team, prob
+  const homeAttackers = pickPlayersByRole(homeSquad, homeTeam, ['offence', 'forward', 'attacker', 'winger'], 2, seed);
+  const awayAttackers = pickPlayersByRole(awaySquad, awayTeam, ['offence', 'forward', 'attacker', 'winger'], 2, seed + 5);
+  const homeCardCandidates = pickPlayersByRole(homeSquad, homeTeam, ['midfield', 'defence', 'defender', 'midfielder'], 2, seed + 11);
+  const awayCardCandidates = pickPlayersByRole(awaySquad, awayTeam, ['midfield', 'defence', 'defender', 'midfielder'], 2, seed + 17);
+
   const player_stats = {
     marcatori: [
-      { name: `${homeTeam} #9`, team: homeTeam, prob: `${32 + (seed % 25)}%` },
-      { name: `${homeTeam} #11`, team: homeTeam, prob: `${22 + ((seed * 2) % 20)}%` },
-      { name: `${awayTeam} #9`, team: awayTeam, prob: `${28 + ((seed * 3) % 24)}%` }
+      { name: homeAttackers[0], team: homeTeam, prob: `${30 + (seed % 25)}%` },
+      { name: homeAttackers[1] || homeAttackers[0], team: homeTeam, prob: `${20 + ((seed * 2) % 20)}%` },
+      { name: awayAttackers[0], team: awayTeam, prob: `${26 + ((seed * 3) % 24)}%` }
     ],
     ammoniti: [
-      { name: `${homeTeam} #6`, team: homeTeam, prob: `${26 + (seed % 22)}%` },
-      { name: `${awayTeam} #8`, team: awayTeam, prob: `${24 + ((seed * 2) % 22)}%` }
+      { name: homeCardCandidates[0], team: homeTeam, prob: `${24 + (seed % 22)}%` },
+      { name: awayCardCandidates[0], team: awayTeam, prob: `${22 + ((seed * 2) % 22)}%` }
     ],
     tiri: [
-      { name: `${homeTeam} #9`, team: homeTeam, prob: `${65 + (seed % 25)}%` },
-      { name: `${awayTeam} #9`, team: awayTeam, prob: `${58 + ((seed * 2) % 26)}%` }
+      { name: homeAttackers[0], team: homeTeam, prob: `${62 + (seed % 26)}%` },
+      { name: awayAttackers[0], team: awayTeam, prob: `${56 + ((seed * 2) % 26)}%` }
     ]
   };
 
@@ -154,8 +211,6 @@ function upsertToSupabase(matches) {
   });
 }
 
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-
 async function run() {
   const now = new Date();
   const future = new Date(now);
@@ -183,9 +238,13 @@ async function run() {
     for (const m of matches) {
       const homeName = m.homeTeam?.shortName || m.homeTeam?.name;
       const awayName = m.awayTeam?.shortName || m.awayTeam?.name;
+      const homeId = m.homeTeam?.id;
+      const awayId = m.awayTeam?.id;
       if (!m.id || !homeName || !awayName || !m.utcDate) continue;
 
-      const tabData = buildTabData(homeName, awayName, m.id);
+      const homeSquad = await getTeamSquad(homeId);
+      const awaySquad = await getTeamSquad(awayId);
+      const tabData = buildTabData(homeName, awayName, homeSquad, awaySquad, m.id);
 
       allMatches.push({
         id: String(m.id),
