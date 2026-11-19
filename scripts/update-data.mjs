@@ -46,6 +46,43 @@ function fetchFootballData(path) {
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+function isEligiblePlayer(player) {
+  if (!player || !player.name) return false;
+  const status = String(player.status || player.injuryStatus || '').toLowerCase();
+  if (
+    status.includes('injur') ||
+    status.includes('suspend') ||
+    status.includes('out') ||
+    status.includes('doubt')
+  ) {
+    return false;
+  }
+  return true;
+}
+
+function filterLowMinutesPlayers(squad) {
+  const withUsageData = squad.filter(p =>
+    typeof p?.minutes === 'number' ||
+    typeof p?.playedMatches === 'number' ||
+    typeof p?.appearances === 'number'
+  );
+
+  // Se l'API non espone dati di utilizzo per questa rosa, non filtra nulla
+  if (withUsageData.length < 11) {
+    return squad;
+  }
+
+  const active = squad.filter(p => {
+    if (typeof p?.minutes === 'number' && p.minutes < 180) return false;
+    if (typeof p?.playedMatches === 'number' && p.playedMatches < 2) return false;
+    if (typeof p?.appearances === 'number' && p.appearances < 2) return false;
+    return true;
+  });
+
+  // Evita di ridurre troppo la rosa se molti giocatori hanno pochi minuti
+  return active.length >= 11 ? active : squad;
+}
+
 async function getTeamSquad(teamId) {
   if (!teamId) return [];
   if (squadCache.has(teamId)) {
@@ -60,9 +97,20 @@ async function getTeamSquad(teamId) {
     return [];
   }
 
-  const squad = res.body.squad.filter(p => p?.name);
+  const eligible = res.body.squad.filter(isEligiblePlayer);
+  const squad = filterLowMinutesPlayers(eligible);
   squadCache.set(teamId, squad);
   return squad;
+}
+
+function hashSeed(homeTeam, awayTeam, matchId) {
+  const input = `${String(matchId ?? '')}|${String(homeTeam ?? '')}|${String(awayTeam ?? '')}`;
+  let hash = 2166136261;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return Math.abs(hash >>> 0);
 }
 
 function normalizeStartXI(rawPlayers) {
@@ -80,73 +128,114 @@ function normalizeStartXI(rawPlayers) {
     .filter(Boolean);
 }
 
-function extractOfficialLineups(matchObj, homeTeam, awayTeam, seed) {
-  const rawHomeXI =
-    matchObj?.homeTeam?.lineup ||
-    matchObj?.lineups?.home?.startXI ||
-    matchObj?.lineup?.home ||
-    [];
-  const rawAwayXI =
-    matchObj?.awayTeam?.lineup ||
-    matchObj?.lineups?.away?.startXI ||
-    matchObj?.lineup?.away ||
-    [];
+function buildProbableEleven(squad, teamName, formation, seed) {
+  const getByRole = (roles, count, offset) => {
+    const matching = squad.filter(p =>
+      roles.some(r => String(p.position || '').toLowerCase().includes(r))
+    );
+    const pool = matching.length ? matching : squad;
+    if (!pool.length) {
+      return Array.from({ length: count }, (_, i) => ({
+        name: `${teamName} #${offset + i + 1}`,
+        position: roles[0].toUpperCase(),
+        shirtNumber: offset + i + 1
+      }));
+    }
+
+    const picked = [];
+    for (let i = 0; i < count; i++) {
+      const candidate = pool[(seed + offset + i * 2) % pool.length];
+      if (!picked.some(x => x.name === candidate.name)) {
+        picked.push(candidate);
+      }
+    }
+
+    let idx = 0;
+    while (picked.length < count && idx < pool.length) {
+      if (!picked.some(x => x.name === pool[idx].name)) {
+        picked.push(pool[idx]);
+      }
+      idx++;
+    }
+
+    return picked;
+  };
+
+  const is352 = formation === "3-5-2";
+  const gk = getByRole(['goalkeeper'], 1, 1);
+  const def = getByRole(['defence', 'defender'], is352 ? 3 : 4, 2);
+  const mid = getByRole(['midfield', 'midfielder'], is352 ? 5 : 3, 6);
+  const att = getByRole(['offence', 'forward', 'attacker', 'winger'], is352 ? 2 : 3, 9);
+
+  return [
+    ...gk.map((p, i) => ({ pos: 'POR', name: p.name, number: p.shirtNumber || (i + 1) })),
+    ...def.map((p, i) => ({ pos: 'DIF', name: p.name, number: p.shirtNumber || (i + 2) })),
+    ...mid.map((p, i) => ({ pos: 'CEN', name: p.name, number: p.shirtNumber || (i + 6) })),
+    ...att.map((p, i) => ({ pos: 'ATT', name: p.name, number: p.shirtNumber || (i + 9) }))
+  ];
+}
+
+function resolveLineups(matchObj, homeTeam, awayTeam, homeSquad, awaySquad, seed) {
+  const rawHomeXI = matchObj?.homeTeam?.lineup || matchObj?.lineups?.home?.startXI || [];
+  const rawAwayXI = matchObj?.awayTeam?.lineup || matchObj?.lineups?.away?.startXI || [];
 
   const homeXI = normalizeStartXI(rawHomeXI);
   const awayXI = normalizeStartXI(rawAwayXI);
 
   const hasOfficial = homeXI.length >= 7 && awayXI.length >= 7;
-  if (!hasOfficial) {
+
+  if (hasOfficial) {
     return {
-      isOfficial: false,
-      homePlayers: [],
-      awayPlayers: [],
+      isOfficial: true,
+      homePlayers: homeXI.map(p => ({ name: p.name, position: p.pos })),
+      awayPlayers: awayXI.map(p => ({ name: p.name, position: p.pos })),
       lineups: {
         home: {
           teamName: homeTeam,
-          formation: (seed % 2) === 0 ? "4-3-3" : "3-5-2",
-          isOfficial: false,
-          startXI: []
+          formation: matchObj?.homeTeam?.formation || ((seed % 2) === 0 ? "4-3-3" : "3-5-2"),
+          isOfficial: true,
+          startXI: homeXI
         },
         away: {
           teamName: awayTeam,
-          formation: ((seed >>> 1) % 2) === 0 ? "4-2-3-1" : "4-4-2",
-          isOfficial: false,
-          startXI: []
+          formation: matchObj?.awayTeam?.formation || (((seed >>> 1) % 2) === 0 ? "4-2-3-1" : "4-4-2"),
+          isOfficial: true,
+          startXI: awayXI
         }
       }
     };
   }
 
+  const homeFormation = (seed % 2) === 0 ? "4-3-3" : "3-5-2";
+  const awayFormation = ((seed >>> 1) % 2) === 0 ? "4-3-3" : "3-5-2";
+
+  const probHomeXI = buildProbableEleven(homeSquad, homeTeam, homeFormation, seed);
+  const probAwayXI = buildProbableEleven(awaySquad, awayTeam, awayFormation, seed + 13);
+
+  const mapPos = (pos) =>
+    pos === 'ATT' ? 'offence' :
+    pos === 'CEN' ? 'midfield' :
+    pos === 'DIF' ? 'defence' : 'goalkeeper';
+
   return {
-    isOfficial: true,
-    homePlayers: homeXI.map(p => ({ name: p.name, position: p.pos })),
-    awayPlayers: awayXI.map(p => ({ name: p.name, position: p.pos })),
+    isOfficial: false,
+    homePlayers: probHomeXI.map(p => ({ name: p.name, position: mapPos(p.pos) })),
+    awayPlayers: probAwayXI.map(p => ({ name: p.name, position: mapPos(p.pos) })),
     lineups: {
       home: {
         teamName: homeTeam,
-        formation: matchObj?.homeTeam?.formation || ((seed % 2) === 0 ? "4-3-3" : "3-5-2"),
-        isOfficial: true,
-        startXI: homeXI
+        formation: homeFormation,
+        isOfficial: false,
+        startXI: probHomeXI
       },
       away: {
         teamName: awayTeam,
-        formation: matchObj?.awayTeam?.formation || (((seed >>> 1) % 2) === 0 ? "4-2-3-1" : "4-4-2"),
-        isOfficial: true,
-        startXI: awayXI
+        formation: awayFormation,
+        isOfficial: false,
+        startXI: probAwayXI
       }
     }
   };
-}
-
-function hashSeed(homeTeam, awayTeam, matchId) {
-  const input = `${String(matchId ?? '')}|${String(homeTeam ?? '')}|${String(awayTeam ?? '')}`;
-  let hash = 2166136261;
-  for (let i = 0; i < input.length; i++) {
-    hash ^= input.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return Math.abs(hash >>> 0);
 }
 
 function pickPlayersByRole(poolSource, teamName, roles, count, seedOffset = 0) {
@@ -226,16 +315,16 @@ function buildTabData(matchObj, homeTeam, awayTeam, homeSquad, awaySquad, matchI
     likelyScore
   };
 
-  const officialInfo = extractOfficialLineups(matchObj, homeTeam, awayTeam, h);
-  const homePool = officialInfo.isOfficial ? officialInfo.homePlayers : homeSquad;
-  const awayPool = officialInfo.isOfficial ? officialInfo.awayPlayers : awaySquad;
+  const lineupInfo = resolveLineups(matchObj, homeTeam, awayTeam, homeSquad, awaySquad, h);
+  const homePool = lineupInfo.homePlayers;
+  const awayPool = lineupInfo.awayPlayers;
 
   const homeAttackers = pickPlayersByRole(homePool, homeTeam, ['offence', 'forward', 'attacker', 'winger', 'att', 'fwd'], 2, h % 97);
   const awayAttackers = pickPlayersByRole(awayPool, awayTeam, ['offence', 'forward', 'attacker', 'winger', 'att', 'fwd'], 2, (h >>> 4) % 97);
   const homeCardCandidates = pickPlayersByRole(homePool, homeTeam, ['midfield', 'defence', 'defender', 'midfielder', 'mid', 'def'], 2, (h >>> 8) % 97);
   const awayCardCandidates = pickPlayersByRole(awayPool, awayTeam, ['midfield', 'defence', 'defender', 'midfielder', 'mid', 'def'], 2, (h >>> 12) % 97);
 
-  const bonusOfficial = officialInfo.isOfficial ? 4 : 0;
+  const bonusOfficial = lineupInfo.isOfficial ? 4 : 0;
 
   const player_stats = {
     marcatori: [
@@ -253,7 +342,12 @@ function buildTabData(matchObj, homeTeam, awayTeam, homeSquad, awaySquad, matchI
     ]
   };
 
-  return { prediction, player_stats, lineups: officialInfo.lineups };
+  return {
+    prediction,
+    player_stats,
+    lineups: lineupInfo.lineups,
+    isOfficial: lineupInfo.isOfficial
+  };
 }
 
 function upsertToSupabase(matches) {
@@ -298,6 +392,7 @@ async function run() {
   const dateTo = future.toISOString().split('T')[0];
 
   const allMatches = [];
+  let officialCount = 0;
 
   for (const comp of COMPETITIONS) {
     const res = await fetchFootballData(
@@ -328,6 +423,8 @@ async function run() {
       const awaySquad = hasOfficialPreview ? [] : await getTeamSquad(awayId);
       const tabData = buildTabData(m, homeName, awayName, homeSquad, awaySquad, m.id);
 
+      if (tabData.isOfficial) officialCount++;
+
       allMatches.push({
         id: String(m.id),
         league: comp.name,
@@ -349,6 +446,7 @@ async function run() {
     return;
   }
 
+  console.log(`Partite con formazioni ufficiali: ${officialCount}/${allMatches.length}`);
   console.log(`Salvataggio di ${allMatches.length} partite su Supabase...`);
   await upsertToSupabase(allMatches);
   console.log("Sincronizzazione completata.");
