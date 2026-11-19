@@ -1,25 +1,25 @@
-name: Update Football Data
+name: Update Matches Dashboard
 
 on:
   schedule:
-    - cron: '0 8 * * *' # Si aggiorna ogni giorno alle 08:00 UTC
-  workflow_dispatch: # Ti permette di avviarlo manualmente quando vuoi
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
 
 jobs:
-  sync:
+  update:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: "20"
 
-      - name: Fetch football data and sync to Supabase
+      - name: Run update script
         env:
           FOOTBALL_DATA_KEY: ${{ secrets.FOOTBALL_DATA_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-        run: node scripts/fetch-football.js
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: node scripts/update-data.mjs
