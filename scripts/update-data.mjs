@@ -3,31 +3,31 @@ import https from 'https';
 const FOOTBALL_DATA_KEY = process.env.FOOTBALL_DATA_KEY;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY;
+const ODDS_API_KEY = (process.env.ODDS_API_KEY || '').trim(); // Opzionale (The Odds API)
 
 if (!FOOTBALL_DATA_KEY) throw new Error("Missing FOOTBALL_DATA_KEY secret");
 if (!SUPABASE_URL) throw new Error("Missing SUPABASE_URL secret");
 if (!SUPABASE_SECRET_KEY) throw new Error("Missing SUPABASE_SECRET_KEY secret");
 
 const COMPETITIONS = [
-  { name: 'Serie A', code: 'SA' },
-  { name: 'Premier League', code: 'PL' },
-  { name: 'La Liga', code: 'PD' },
-  { name: 'Bundesliga', code: 'BL1' },
-  { name: 'Ligue 1', code: 'FL1' },
-  { name: 'Champions League', code: 'CL' }
+  { name: 'Serie A', code: 'SA', oddsKey: 'soccer_italy_serie_a' },
+  { name: 'Premier League', code: 'PL', oddsKey: 'soccer_epl' },
+  { name: 'La Liga', code: 'PD', oddsKey: 'soccer_spain_la_liga' },
+  { name: 'Bundesliga', code: 'BL1', oddsKey: 'soccer_germany_bundesliga' },
+  { name: 'Ligue 1', code: 'FL1', oddsKey: 'soccer_france_ligue_one' },
+  { name: 'Champions League', code: 'CL', oddsKey: 'soccer_uefa_champs_league' }
 ];
 
 const squadCache = new Map();
 
-function fetchFootballData(path) {
+function httpGetJson(urlString, headers = {}) {
   return new Promise((resolve, reject) => {
+    const parsed = new URL(urlString);
     const options = {
-      hostname: 'api.football-data.org',
-      path,
+      hostname: parsed.hostname,
+      path: `${parsed.pathname}${parsed.search}`,
       method: 'GET',
-      headers: {
-        'X-Auth-Token': FOOTBALL_DATA_KEY.trim()
-      }
+      headers
     };
 
     https.get(options, (res) => {
@@ -36,7 +36,7 @@ function fetchFootballData(path) {
       res.on('end', () => {
         try {
           resolve({ status: res.statusCode, body: JSON.parse(data) });
-        } catch (err) {
+        } catch {
           reject(new Error(`Risposta non JSON (${res.statusCode}): ${data.slice(0, 200)}`));
         }
       });
@@ -44,7 +44,329 @@ function fetchFootballData(path) {
   });
 }
 
+function fetchFootballData(path) {
+  return httpGetJson(`https://api.football-data.org${path}`, {
+    'X-Auth-Token': FOOTBALL_DATA_KEY.trim()
+  });
+}
+
 const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function normalizeTeamKey(name) {
+  return String(name || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\b(fc|cf|ac|as|ss|us|sc|afc|bc|cfc|calcio|1907|1909|1913|united|city)\b/g, ' ')
+    .replace(/[^a-z0-9]/g, '')
+    .trim();
+}
+
+/**
+ * Carica classifica (TOTAL, HOME, AWAY) e forma recente (ultime 5 FINISHED)
+ */
+async function buildLeagueAnalytics(compCode) {
+  const analytics = {
+    avgHomeGoals: 1.48,
+    avgAwayGoals: 1.18,
+    teams: new Map() // teamId -> stats
+  };
+
+  // 1. Classifica
+  const standRes = await fetchFootballData(`/v4/competitions/${compCode}/standings`);
+  await sleep(6500);
+
+  if (standRes.status === 200 && Array.isArray(standRes.body?.standings)) {
+    const totalTable = standRes.body.standings.find(s => s.type === 'TOTAL')?.table || [];
+    const homeTable = standRes.body.standings.find(s => s.type === 'HOME')?.table || [];
+    const awayTable = standRes.body.standings.find(s => s.type === 'AWAY')?.table || [];
+
+    let totalHomeGoals = 0;
+    let totalHomeGames = 0;
+    let totalAwayGoals = 0;
+    let totalAwayGames = 0;
+
+    for (const row of homeTable) {
+      totalHomeGoals += Number(row.goalsFor || 0);
+      totalHomeGames += Number(row.playedGames || 0);
+    }
+    for (const row of awayTable) {
+      totalAwayGoals += Number(row.goalsFor || 0);
+      totalAwayGames += Number(row.playedGames || 0);
+    }
+
+    if (totalHomeGames >= 10) analytics.avgHomeGoals = Math.max(0.8, totalHomeGoals / totalHomeGames);
+    if (totalAwayGames >= 10) analytics.avgAwayGoals = Math.max(0.7, totalAwayGoals / totalAwayGames);
+
+    const homeById = new Map(homeTable.map(r => [r.team?.id, r]));
+    const awayById = new Map(awayTable.map(r => [r.team?.id, r]));
+
+    for (const row of totalTable) {
+      const id = row.team?.id;
+      if (!id) continue;
+      const hRow = homeById.get(id) || row;
+      const aRow = awayById.get(id) || row;
+
+      const tGames = Math.max(1, Number(row.playedGames || 1));
+      const hGames = Math.max(1, Number(hRow.playedGames || tGames));
+      const aGames = Math.max(1, Number(aRow.playedGames || tGames));
+
+      analytics.teams.set(id, {
+        position: Number(row.position || 10),
+        pointsPerGame: Number(row.points || 0) / tGames,
+        homeGfPg: Number(hRow.goalsFor || 0) / hGames,
+        homeGaPg: Number(hRow.goalsAgainst || 0) / hGames,
+        awayGfPg: Number(aRow.goalsFor || 0) / aGames,
+        awayGaPg: Number(aRow.goalsAgainst || 0) / aGames,
+        recentFormRatio: 0.5,
+        recentGfPg: null,
+        recentGaPg: null
+      });
+    }
+  }
+
+  // 2. Ultime partite concluse per forma recente (ultime 5 gare per squadra)
+  const finRes = await fetchFootballData(`/v4/competitions/${compCode}/matches?status=FINISHED`);
+  await sleep(6500);
+
+  if (finRes.status === 200 && Array.isArray(finRes.body?.matches)) {
+    const finished = finRes.body.matches
+      .filter(m => m.score?.fullTime?.home != null && m.score?.fullTime?.away != null)
+      .sort((a, b) => new Date(b.utcDate) - new Date(a.utcDate));
+
+    const recentByTeam = new Map();
+    for (const m of finished) {
+      const hId = m.homeTeam?.id;
+      const aId = m.awayTeam?.id;
+      const hGoals = Number(m.score.fullTime.home);
+      const aGoals = Number(m.score.fullTime.away);
+
+      if (hId) {
+        const list = recentByTeam.get(hId) || [];
+        if (list.length < 5) {
+          list.push({ pts: hGoals > aGoals ? 3 : (hGoals === aGoals ? 1 : 0), gf: hGoals, ga: aGoals });
+          recentByTeam.set(hId, list);
+        }
+      }
+      if (aId) {
+        const list = recentByTeam.get(aId) || [];
+        if (list.length < 5) {
+          list.push({ pts: aGoals > hGoals ? 3 : (aGoals === hGoals ? 1 : 0), gf: aGoals, ga: hGoals });
+          recentByTeam.set(aId, list);
+        }
+      }
+    }
+
+    for (const [teamId, games] of recentByTeam.entries()) {
+      if (!games.length) continue;
+      const pts = games.reduce((s, g) => s + g.pts, 0);
+      const gf = games.reduce((s, g) => s + g.gf, 0);
+      const ga = games.reduce((s, g) => s + g.ga, 0);
+
+      const existing = analytics.teams.get(teamId) || {
+        position: 10,
+        pointsPerGame: pts / games.length,
+        homeGfPg: analytics.avgHomeGoals,
+        homeGaPg: analytics.avgAwayGoals,
+        awayGfPg: analytics.avgAwayGoals,
+        awayGaPg: analytics.avgHomeGoals
+      };
+
+      existing.recentFormRatio = pts / (games.length * 3);
+      existing.recentGfPg = gf / games.length;
+      existing.recentGaPg = ga / games.length;
+      analytics.teams.set(teamId, existing);
+    }
+  }
+
+  return analytics;
+}
+
+/**
+ * Quote reali opzionali da The Odds API (se ODDS_API_KEY è impostata)
+ */
+async function fetchMarketOddsMap(oddsSportKey) {
+  const map = new Map();
+  if (!ODDS_API_KEY || !oddsSportKey) return map;
+
+  try {
+    const url = `https://api.the-odds-api.com/v4/sports/${oddsSportKey}/odds/?apiKey=${encodeURIComponent(ODDS_API_KEY)}&regions=eu&markets=h2h,totals&oddsFormat=decimal`;
+    const res = await httpGetJson(url);
+    if (res.status !== 200 || !Array.isArray(res.body)) {
+      console.log(`[Odds API ${oddsSportKey}] Status ${res.status}`);
+      return map;
+    }
+
+    for (const ev of res.body) {
+      const hKey = normalizeTeamKey(ev.home_team);
+      const aKey = normalizeTeamKey(ev.away_team);
+      if (!hKey || !aKey || !Array.isArray(ev.bookmakers)) continue;
+
+      let sumH = 0, sumD = 0, sumA = 0, count1x2 = 0;
+      let sumOver = 0, sumUnder = 0, countTot = 0;
+
+      for (const bk of ev.bookmakers) {
+        const h2h = bk.markets?.find(m => m.key === 'h2h');
+        if (h2h && Array.isArray(h2h.outcomes)) {
+          const oH = h2h.outcomes.find(o => normalizeTeamKey(o.name) === hKey)?.price;
+          const oA = h2h.outcomes.find(o => normalizeTeamKey(o.name) === aKey)?.price;
+          const oD = h2h.outcomes.find(o => String(o.name).toLowerCase() === 'draw')?.price;
+          if (oH > 1 && oD > 1 && oA > 1) {
+            const invSum = (1 / oH) + (1 / oD) + (1 / oA);
+            sumH += (1 / oH) / invSum;
+            sumD += (1 / oD) / invSum;
+            sumA += (1 / oA) / invSum;
+            count1x2++;
+          }
+        }
+
+        const totals = bk.markets?.find(m => m.key === 'totals');
+        if (totals && Array.isArray(totals.outcomes)) {
+          const over25 = totals.outcomes.find(o => o.name === 'Over' && Number(o.point) === 2.5)?.price;
+          const under25 = totals.outcomes.find(o => o.name === 'Under' && Number(o.point) === 2.5)?.price;
+          if (over25 > 1 && under25 > 1) {
+            const invTot = (1 / over25) + (1 / under25);
+            sumOver += (1 / over25) / invTot;
+            sumUnder += (1 / under25) / invTot;
+            countTot++;
+          }
+        }
+      }
+
+      if (count1x2 > 0) {
+        map.set(`${hKey}|${aKey}`, {
+          homeProb: sumH / count1x2,
+          drawProb: sumD / count1x2,
+          awayProb: sumA / count1x2,
+          over25Prob: countTot > 0 ? (sumOver / countTot) : null
+        });
+      }
+    }
+  } catch (err) {
+    console.log(`[Odds API ${oddsSportKey}] Errore:`, err.message);
+  }
+
+  return map;
+}
+
+function poissonPmf(k, lambda) {
+  let fact = 1;
+  for (let i = 2; i <= k; i++) fact *= i;
+  return (Math.pow(lambda, k) * Math.exp(-lambda)) / fact;
+}
+
+function computeMatchPrediction(homeId, awayId, homeName, awayName, analytics, marketOddsMap, fallbackSeed) {
+  const hStats = analytics.teams.get(homeId);
+  const aStats = analytics.teams.get(awayId);
+
+  const avgH = analytics.avgHomeGoals;
+  const avgA = analytics.avgAwayGoals;
+
+  let lambdaHome;
+  let lambdaAway;
+
+  if (hStats && aStats) {
+    const hAttack = hStats.homeGfPg / avgH;
+    const aDefense = aStats.awayGaPg / avgH;
+    const aAttack = aStats.awayGfPg / avgA;
+    const hDefense = hStats.homeGaPg / avgA;
+
+    // Media pesata tra rendimento stagionale e forma recente (ultime 5)
+    const hRecentAttack = hStats.recentGfPg != null ? (hStats.recentGfPg / ((avgH + avgA) / 2)) : hAttack;
+    const aRecentAttack = aStats.recentGfPg != null ? (aStats.recentGfPg / ((avgH + avgA) / 2)) : aAttack;
+
+    const effHAttack = 0.72 * hAttack + 0.28 * hRecentAttack;
+    const effAAttack = 0.72 * aAttack + 0.28 * aRecentAttack;
+
+    // Aggiustamento leggero sulla forma recente (Punti ultime 5)
+    const formDiff = (hStats.recentFormRatio - aStats.recentFormRatio) * 0.22;
+
+    lambdaHome = Math.min(3.4, Math.max(0.45, effHAttack * aDefense * avgH * (1 + formDiff)));
+    lambdaAway = Math.min(3.1, Math.max(0.35, effAAttack * hDefense * avgA * (1 - formDiff)));
+  } else {
+    // Fallback solo per coppe/squadre senza classifica (es. turni preliminari)
+    lambdaHome = Number((1.15 + ((fallbackSeed % 11) / 10)).toFixed(2));
+    lambdaAway = Number((0.95 + (((fallbackSeed >>> 4) % 10) / 10)).toFixed(2));
+  }
+
+  // Calcolo matrice Poisson (0..6 gol per squadra)
+  let pHome = 0;
+  let pDraw = 0;
+  let pAway = 0;
+  let pOver25 = 0;
+  let pBtts = 0;
+  let bestScore = '1-0';
+  let bestScoreProb = -1;
+
+  for (let i = 0; i <= 6; i++) {
+    const pi = poissonPmf(i, lambdaHome);
+    for (let j = 0; j <= 6; j++) {
+      const pj = poissonPmf(j, lambdaAway);
+      const p = pi * pj;
+
+      if (i > j) pHome += p;
+      else if (i === j) pDraw += p;
+      else pAway += p;
+
+      if (i + j >= 3) pOver25 += p;
+      if (i >= 1 && j >= 1) pBtts += p;
+
+      if (p > bestScoreProb) {
+        bestScoreProb = p;
+        bestScore = `${i}-${j}`;
+      }
+    }
+  }
+
+  // Normalizzazione somma 1X2
+  const sum1x2 = pHome + pDraw + pAway || 1;
+  pHome /= sum1x2;
+  pDraw /= sum1x2;
+  pAway /= sum1x2;
+
+  // Blend con quote reali di mercato se disponibili (55% Mercato + 45% Modello Poisson)
+  const marketKey = `${normalizeTeamKey(homeName)}|${normalizeTeamKey(awayName)}`;
+  const market = marketOddsMap.get(marketKey);
+  if (market) {
+    pHome = 0.45 * pHome + 0.55 * market.homeProb;
+    pDraw = 0.45 * pDraw + 0.55 * market.drawProb;
+    pAway = 0.45 * pAway + 0.55 * market.awayProb;
+    if (market.over25Prob != null) {
+      pOver25 = 0.45 * pOver25 + 0.55 * market.over25Prob;
+    }
+  }
+
+  const homePct = Math.max(4, Math.min(88, Math.round(pHome * 100)));
+  const drawPct = Math.max(8, Math.min(45, Math.round(pDraw * 100)));
+  const awayPct = Math.max(4, 100 - homePct - drawPct);
+
+  const over25 = Math.max(15, Math.min(88, Math.round(pOver25 * 100)));
+  const under25 = 100 - over25;
+  const bothTeamsToScore = Math.max(15, Math.min(86, Math.round(pBtts * 100)));
+
+  let mostLikelyOutcome = 'X';
+  if (homePct >= awayPct && homePct >= drawPct) mostLikelyOutcome = '1';
+  else if (awayPct > homePct && awayPct >= drawPct) mostLikelyOutcome = '2';
+
+  return {
+    oneXTwo: { home: homePct, draw: drawPct, away: awayPct },
+    over25,
+    under25,
+    bothTeamsToScore,
+    doubleChance: {
+      '1X': Math.min(96, homePct + drawPct),
+      'X2': Math.min(96, awayPct + drawPct),
+      '12': Math.min(96, homePct + awayPct)
+    },
+    expectedGoals: {
+      home: Number(lambdaHome.toFixed(2)),
+      away: Number(lambdaAway.toFixed(2))
+    },
+    mostLikelyOutcome,
+    likelyScore: bestScore,
+    source: market ? 'poisson+market' : 'poisson+standings'
+  };
+}
 
 function isEligiblePlayer(player) {
   if (!player || !player.name) return false;
@@ -67,9 +389,7 @@ function filterLowMinutesPlayers(squad) {
     (typeof p?.appearances === 'number' && p.appearances > 0)
   );
 
-  if (withPositiveUsage.length < 15) {
-    return squad;
-  }
+  if (withPositiveUsage.length < 15) return squad;
 
   const active = squad.filter(p => {
     if (typeof p?.minutes === 'number' && p.minutes < 180) return false;
@@ -83,9 +403,7 @@ function filterLowMinutesPlayers(squad) {
 
 async function getTeamSquad(teamId) {
   if (!teamId) return [];
-  if (squadCache.has(teamId)) {
-    return squadCache.get(teamId);
-  }
+  if (squadCache.has(teamId)) return squadCache.get(teamId);
 
   await sleep(6500);
   const res = await fetchFootballData(`/v4/teams/${teamId}`);
@@ -159,7 +477,7 @@ function buildProbableEleven(squad, teamName, formation, seed) {
     return picked;
   };
 
-  const is352 = formation === "3-5-2";
+  const is352 = formation === '3-5-2';
   const gk = getByRole(['goalkeeper'], 1, 1);
   const def = getByRole(['defence', 'defender'], is352 ? 3 : 4, 2);
   const mid = getByRole(['midfield', 'midfielder'], is352 ? 5 : 3, 6);
@@ -190,13 +508,13 @@ function resolveLineups(matchObj, homeTeam, awayTeam, homeSquad, awaySquad, seed
       lineups: {
         home: {
           teamName: homeTeam,
-          formation: matchObj?.homeTeam?.formation || ((seed % 2) === 0 ? "4-3-3" : "3-5-2"),
+          formation: matchObj?.homeTeam?.formation || ((seed % 2) === 0 ? '4-3-3' : '3-5-2'),
           isOfficial: true,
           startXI: homeXI
         },
         away: {
           teamName: awayTeam,
-          formation: matchObj?.awayTeam?.formation || (((seed >>> 1) % 2) === 0 ? "4-2-3-1" : "4-4-2"),
+          formation: matchObj?.awayTeam?.formation || (((seed >>> 1) % 2) === 0 ? '4-2-3-1' : '4-4-2'),
           isOfficial: true,
           startXI: awayXI
         }
@@ -204,8 +522,8 @@ function resolveLineups(matchObj, homeTeam, awayTeam, homeSquad, awaySquad, seed
     };
   }
 
-  const homeFormation = (seed % 2) === 0 ? "4-3-3" : "3-5-2";
-  const awayFormation = ((seed >>> 1) % 2) === 0 ? "4-3-3" : "3-5-2";
+  const homeFormation = (seed % 2) === 0 ? '4-3-3' : '3-5-2';
+  const awayFormation = ((seed >>> 1) % 2) === 0 ? '4-3-3' : '3-5-2';
 
   const probHomeXI = buildProbableEleven(homeSquad, homeTeam, homeFormation, seed);
   const probAwayXI = buildProbableEleven(awaySquad, awayTeam, awayFormation, seed + 13);
@@ -284,52 +602,18 @@ function ensureNonEmptyPlayerList(list, fallbackTeam, fallbackNames, seed) {
   }));
 }
 
-function buildTabData(matchObj, homeTeam, awayTeam, homeSquad, awaySquad, matchId) {
+function buildTabData(matchObj, homeTeam, awayTeam, homeId, awayId, homeSquad, awaySquad, analytics, marketOddsMap, matchId) {
   const h = hashSeed(homeTeam, awayTeam, matchId);
 
-  const homeWeight = 22 + (h % 51);
-  const awayWeight = 18 + ((h >>> 8) % 47);
-  const drawWeight = 14 + ((h >>> 16) % 21);
-
-  const sum = homeWeight + awayWeight + drawWeight;
-  const homePct = Math.round((homeWeight / sum) * 100);
-  const drawPct = Math.round((drawWeight / sum) * 100);
-  const awayPct = Math.max(1, 100 - homePct - drawPct);
-  const diff = 100 - (homePct + drawPct + awayPct);
-  const finalHome = homePct + diff;
-
-  const over25 = 38 + ((h >>> 5) % 41);
-  const under25 = 100 - over25;
-  const bothTeamsToScore = 36 + ((h >>> 11) % 43);
-
-  const expHome = Number((0.7 + ((h % 19) / 10)).toFixed(1));
-  const expAway = Number((0.6 + (((h >>> 7) % 18) / 10)).toFixed(1));
-
-  let mostLikelyOutcome = "X";
-  if (finalHome >= awayPct && finalHome >= drawPct) mostLikelyOutcome = "1";
-  else if (awayPct > finalHome && awayPct >= drawPct) mostLikelyOutcome = "2";
-
-  const likelyScore =
-    mostLikelyOutcome === "1"
-      ? (over25 >= 55 ? "2-1" : "1-0")
-      : mostLikelyOutcome === "2"
-      ? (over25 >= 55 ? "1-2" : "0-1")
-      : (over25 >= 55 ? "2-2" : "1-1");
-
-  const prediction = {
-    oneXTwo: { home: finalHome, draw: drawPct, away: awayPct },
-    over25,
-    under25,
-    bothTeamsToScore,
-    doubleChance: {
-      "1X": Math.min(99, finalHome + drawPct),
-      "X2": Math.min(99, awayPct + drawPct),
-      "12": Math.min(99, finalHome + awayPct)
-    },
-    expectedGoals: { home: expHome, away: expAway },
-    mostLikelyOutcome,
-    likelyScore
-  };
+  const prediction = computeMatchPrediction(
+    homeId,
+    awayId,
+    homeTeam,
+    awayTeam,
+    analytics,
+    marketOddsMap,
+    h
+  );
 
   const lineupInfo = resolveLineups(matchObj, homeTeam, awayTeam, homeSquad, awaySquad, h);
   const homePool = lineupInfo.homePlayers.length ? lineupInfo.homePlayers : homeSquad;
@@ -340,22 +624,25 @@ function buildTabData(matchObj, homeTeam, awayTeam, homeSquad, awaySquad, matchI
   const homeCardCandidates = pickPlayersByRole(homePool, homeTeam, ['midfield', 'defence', 'defender', 'midfielder', 'mid', 'def'], 2, (h >>> 8) % 97);
   const awayCardCandidates = pickPlayersByRole(awayPool, awayTeam, ['midfield', 'defence', 'defender', 'midfielder', 'mid', 'def'], 2, (h >>> 12) % 97);
 
+  // Probabilità marcatori/tiri coerenti con i gol attesi (expectedGoals) del match
+  const homeGoalFactor = Math.min(22, Math.round(prediction.expectedGoals.home * 11));
+  const awayGoalFactor = Math.min(22, Math.round(prediction.expectedGoals.away * 11));
   const bonusOfficial = lineupInfo.isOfficial ? 4 : 0;
 
   const rawMarcatori = [
-    { name: homeAttackers[0], team: homeTeam, prob: `${Math.min(95, 22 + (h % 34) + bonusOfficial)}%` },
-    { name: homeAttackers[1] || homeAttackers[0], team: homeTeam, prob: `${Math.min(95, 15 + ((h >>> 3) % 26) + bonusOfficial)}%` },
-    { name: awayAttackers[0], team: awayTeam, prob: `${Math.min(95, 20 + ((h >>> 6) % 33) + bonusOfficial)}%` }
+    { name: homeAttackers[0], team: homeTeam, prob: `${Math.min(72, 18 + homeGoalFactor + (h % 14) + bonusOfficial)}%` },
+    { name: homeAttackers[1] || homeAttackers[0], team: homeTeam, prob: `${Math.min(62, 12 + Math.round(homeGoalFactor * 0.75) + ((h >>> 3) % 12) + bonusOfficial)}%` },
+    { name: awayAttackers[0], team: awayTeam, prob: `${Math.min(70, 16 + awayGoalFactor + ((h >>> 6) % 14) + bonusOfficial)}%` }
   ];
 
   const rawAmmoniti = [
-    { name: homeCardCandidates[0], team: homeTeam, prob: `${Math.min(95, 18 + ((h >>> 9) % 28) + bonusOfficial)}%` },
-    { name: awayCardCandidates[0], team: awayTeam, prob: `${Math.min(95, 17 + ((h >>> 13) % 28) + bonusOfficial)}%` }
+    { name: homeCardCandidates[0], team: homeTeam, prob: `${Math.min(65, 20 + ((h >>> 9) % 24) + bonusOfficial)}%` },
+    { name: awayCardCandidates[0], team: awayTeam, prob: `${Math.min(65, 20 + ((h >>> 13) % 24) + bonusOfficial)}%` }
   ];
 
   const rawTiri = [
-    { name: homeAttackers[0], team: homeTeam, prob: `${Math.min(98, 52 + ((h >>> 2) % 36) + bonusOfficial)}%` },
-    { name: awayAttackers[0], team: awayTeam, prob: `${Math.min(98, 48 + ((h >>> 10) % 37) + bonusOfficial)}%` }
+    { name: homeAttackers[0], team: homeTeam, prob: `${Math.min(92, 46 + homeGoalFactor + ((h >>> 2) % 18) + bonusOfficial)}%` },
+    { name: awayAttackers[0], team: awayTeam, prob: `${Math.min(90, 44 + awayGoalFactor + ((h >>> 10) % 18) + bonusOfficial)}%` }
   ];
 
   const player_stats = {
@@ -430,6 +717,15 @@ async function run() {
     const matches = res.body.matches;
     console.log(`[${comp.name}] Partite trovate: ${matches.length}`);
 
+    if (matches.length === 0) {
+      await sleep(6500);
+      continue;
+    }
+
+    // Carica classifica + ultimi risultati reali + eventuali quote di mercato per questo campionato
+    const analytics = await buildLeagueAnalytics(comp.code);
+    const marketOddsMap = await fetchMarketOddsMap(comp.oddsKey);
+
     for (const m of matches) {
       const homeName = m.homeTeam?.shortName || m.homeTeam?.name;
       const awayName = m.awayTeam?.shortName || m.awayTeam?.name;
@@ -443,7 +739,18 @@ async function run() {
 
       const homeSquad = hasOfficialPreview ? [] : await getTeamSquad(homeId);
       const awaySquad = hasOfficialPreview ? [] : await getTeamSquad(awayId);
-      const tabData = buildTabData(m, homeName, awayName, homeSquad, awaySquad, m.id);
+      const tabData = buildTabData(
+        m,
+        homeName,
+        awayName,
+        homeId,
+        awayId,
+        homeSquad,
+        awaySquad,
+        analytics,
+        marketOddsMap,
+        m.id
+      );
 
       if (tabData.isOfficial) officialCount++;
 
