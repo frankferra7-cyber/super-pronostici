@@ -67,7 +67,6 @@ function filterLowMinutesPlayers(squad) {
     (typeof p?.appearances === 'number' && p.appearances > 0)
   );
 
-  // Applica il filtro solo se c'è una base solida di dati d'impiego
   if (withPositiveUsage.length < 15) {
     return squad;
   }
@@ -317,4 +316,165 @@ function buildTabData(matchObj, homeTeam, awayTeam, homeSquad, awaySquad, matchI
       ? (over25 >= 55 ? "1-2" : "0-1")
       : (over25 >= 55 ? "2-2" : "1-1");
 
-  const
+  const prediction = {
+    oneXTwo: { home: finalHome, draw: drawPct, away: awayPct },
+    over25,
+    under25,
+    bothTeamsToScore,
+    doubleChance: {
+      "1X": Math.min(99, finalHome + drawPct),
+      "X2": Math.min(99, awayPct + drawPct),
+      "12": Math.min(99, finalHome + awayPct)
+    },
+    expectedGoals: { home: expHome, away: expAway },
+    mostLikelyOutcome,
+    likelyScore
+  };
+
+  const lineupInfo = resolveLineups(matchObj, homeTeam, awayTeam, homeSquad, awaySquad, h);
+  const homePool = lineupInfo.homePlayers.length ? lineupInfo.homePlayers : homeSquad;
+  const awayPool = lineupInfo.awayPlayers.length ? lineupInfo.awayPlayers : awaySquad;
+
+  const homeAttackers = pickPlayersByRole(homePool, homeTeam, ['offence', 'forward', 'attacker', 'winger', 'att', 'fwd'], 2, h % 97);
+  const awayAttackers = pickPlayersByRole(awayPool, awayTeam, ['offence', 'forward', 'attacker', 'winger', 'att', 'fwd'], 2, (h >>> 4) % 97);
+  const homeCardCandidates = pickPlayersByRole(homePool, homeTeam, ['midfield', 'defence', 'defender', 'midfielder', 'mid', 'def'], 2, (h >>> 8) % 97);
+  const awayCardCandidates = pickPlayersByRole(awayPool, awayTeam, ['midfield', 'defence', 'defender', 'midfielder', 'mid', 'def'], 2, (h >>> 12) % 97);
+
+  const bonusOfficial = lineupInfo.isOfficial ? 4 : 0;
+
+  const rawMarcatori = [
+    { name: homeAttackers[0], team: homeTeam, prob: `${Math.min(95, 22 + (h % 34) + bonusOfficial)}%` },
+    { name: homeAttackers[1] || homeAttackers[0], team: homeTeam, prob: `${Math.min(95, 15 + ((h >>> 3) % 26) + bonusOfficial)}%` },
+    { name: awayAttackers[0], team: awayTeam, prob: `${Math.min(95, 20 + ((h >>> 6) % 33) + bonusOfficial)}%` }
+  ];
+
+  const rawAmmoniti = [
+    { name: homeCardCandidates[0], team: homeTeam, prob: `${Math.min(95, 18 + ((h >>> 9) % 28) + bonusOfficial)}%` },
+    { name: awayCardCandidates[0], team: awayTeam, prob: `${Math.min(95, 17 + ((h >>> 13) % 28) + bonusOfficial)}%` }
+  ];
+
+  const rawTiri = [
+    { name: homeAttackers[0], team: homeTeam, prob: `${Math.min(98, 52 + ((h >>> 2) % 36) + bonusOfficial)}%` },
+    { name: awayAttackers[0], team: awayTeam, prob: `${Math.min(98, 48 + ((h >>> 10) % 37) + bonusOfficial)}%` }
+  ];
+
+  const player_stats = {
+    marcatori: ensureNonEmptyPlayerList(rawMarcatori, homeTeam, [homeAttackers[0], awayAttackers[0]], h),
+    ammoniti: ensureNonEmptyPlayerList(rawAmmoniti, homeTeam, [homeCardCandidates[0], awayCardCandidates[0]], h + 19),
+    tiri: ensureNonEmptyPlayerList(rawTiri, homeTeam, [homeAttackers[0], awayAttackers[0]], h + 37)
+  };
+
+  return {
+    prediction,
+    player_stats,
+    lineups: lineupInfo.lineups,
+    isOfficial: lineupInfo.isOfficial
+  };
+}
+
+function upsertToSupabase(matches) {
+  return new Promise((resolve, reject) => {
+    const url = new URL(`${SUPABASE_URL}/rest/v1/matches`);
+    const body = JSON.stringify(matches);
+
+    const options = {
+      hostname: url.hostname,
+      path: url.pathname,
+      method: 'POST',
+      headers: {
+        'apikey': SUPABASE_SECRET_KEY,
+        'Authorization': `Bearer ${SUPABASE_SECRET_KEY}`,
+        'Content-Type': 'application/json',
+        'Prefer': 'resolution=merge-duplicates'
+      }
+    };
+
+    const req = https.request(options, (res) => {
+      let responseData = '';
+      res.on('data', chunk => responseData += chunk);
+      res.on('end', () => {
+        console.log(`Status Supabase: ${res.statusCode}`);
+        if (res.statusCode >= 200 && res.statusCode < 300) resolve(responseData);
+        else reject(new Error(`Errore Supabase (${res.statusCode}): ${responseData}`));
+      });
+    });
+
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+}
+
+async function run() {
+  const now = new Date();
+  const future = new Date(now);
+  future.setDate(now.getDate() + 7);
+
+  const dateFrom = now.toISOString().split('T')[0];
+  const dateTo = future.toISOString().split('T')[0];
+
+  const allMatches = [];
+  let officialCount = 0;
+
+  for (const comp of COMPETITIONS) {
+    const res = await fetchFootballData(
+      `/v4/competitions/${comp.code}/matches?dateFrom=${dateFrom}&dateTo=${dateTo}`
+    );
+
+    if (res.status !== 200 || !Array.isArray(res.body?.matches)) {
+      console.log(`[${comp.name}] Risposta API ${res.status}:`, JSON.stringify(res.body?.message || res.body || {}));
+      await sleep(6500);
+      continue;
+    }
+
+    const matches = res.body.matches;
+    console.log(`[${comp.name}] Partite trovate: ${matches.length}`);
+
+    for (const m of matches) {
+      const homeName = m.homeTeam?.shortName || m.homeTeam?.name;
+      const awayName = m.awayTeam?.shortName || m.awayTeam?.name;
+      const homeId = m.homeTeam?.id;
+      const awayId = m.awayTeam?.id;
+      if (!m.id || !homeName || !awayName || !m.utcDate) continue;
+
+      const hasOfficialPreview =
+        Array.isArray(m.homeTeam?.lineup) && m.homeTeam.lineup.length >= 7 &&
+        Array.isArray(m.awayTeam?.lineup) && m.awayTeam.lineup.length >= 7;
+
+      const homeSquad = hasOfficialPreview ? [] : await getTeamSquad(homeId);
+      const awaySquad = hasOfficialPreview ? [] : await getTeamSquad(awayId);
+      const tabData = buildTabData(m, homeName, awayName, homeSquad, awaySquad, m.id);
+
+      if (tabData.isOfficial) officialCount++;
+
+      allMatches.push({
+        id: String(m.id),
+        league: comp.name,
+        home: homeName,
+        away: awayName,
+        kickoff: m.utcDate,
+        prediction: tabData.prediction,
+        player_stats: tabData.player_stats,
+        lineups: tabData.lineups,
+        updated_at: new Date().toISOString()
+      });
+    }
+
+    await sleep(6500);
+  }
+
+  if (allMatches.length === 0) {
+    console.log("Nessuna partita trovata nella finestra di 7 giorni.");
+    return;
+  }
+
+  console.log(`Partite con formazioni ufficiali: ${officialCount}/${allMatches.length}`);
+  console.log(`Salvataggio di ${allMatches.length} partite su Supabase...`);
+  await upsertToSupabase(allMatches);
+  console.log("Sincronizzazione completata.");
+}
+
+run().catch(err => {
+  console.error("Errore:", err);
+  process.exit(1);
+});
