@@ -12,6 +12,8 @@ header{max-width:1100px;margin:auto;padding:22px 20px 14px;display:flex;align-it
 main{max-width:1100px;margin:auto;padding:8px 20px 40px}.hero{padding:26px 0 20px}.eyebrow{color:var(--green);font-size:11px;font-weight:800;letter-spacing:.18em;text-transform:uppercase}.hero h1{font-size:clamp(28px,5vw,46px);line-height:1.08;margin:8px 0}.hero p{color:var(--muted);max-width:650px;margin:10px 0 0}
 nav{display:flex;gap:8px;overflow:auto;padding:8px 0 18px}nav button,.filter{white-space:nowrap;background:var(--panel);color:#c6d4e1;border:1px solid var(--line);border-radius:12px;padding:10px 14px;font-weight:650;cursor:pointer}nav button.active{background:var(--green);border-color:var(--green);color:#091421}
 .section-head{display:flex;align-items:end;justify-content:space-between;gap:10px;margin:8px 0 13px}.section-head h2{margin:0;font-size:20px}.section-head span{color:var(--muted);font-size:12px}
+.live-pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--green2);margin-left:10px}
+.live-dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
 .grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.card{background:linear-gradient(155deg,#14283a,#0e1b2a);border:1px solid var(--line);border-radius:18px;padding:17px;min-width:0}.league{color:var(--green2);font-size:11px;font-weight:800;letter-spacing:.09em;text-transform:uppercase}.match{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:15px 0}.team{font-weight:750;font-size:15px}.vs{color:var(--muted);font-size:11px}.time{font-size:12px;color:var(--muted)}.chips{display:flex;gap:7px;flex-wrap:wrap}.chip{background:#1c3448;border:1px solid #2c485c;border-radius:9px;padding:6px 9px;font-size:12px;color:#dce8f2}.chip b{color:var(--green)}.note{font-size:12px;color:var(--muted);margin:12px 0 0}.empty{grid-column:1/-1;text-align:center;padding:30px;color:var(--muted)}.league-heading{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;margin:12px 2px 0;padding:10px 13px;border-left:3px solid var(--green);background:#102235;border-radius:0 10px 10px 0}.league-heading strong{color:var(--green2);font-size:14px;letter-spacing:.04em}.league-heading span{color:var(--muted);font-size:12px}.feature-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:16px}.feature{background:#0d1b2a;border:1px solid var(--line);border-radius:16px;padding:15px}.feature .ico{font-size:22px}.feature strong{display:block;margin:7px 0 3px}.feature p{font-size:12px;color:var(--muted);margin:0}
 .match-tabs{display:flex;gap:6px;overflow-x:auto;margin:14px 0 12px;padding-bottom:2px}.match-tab{flex:1;white-space:nowrap;background:#0b1927;color:#b9c9d8;border:1px solid #2b4256;border-radius:10px;padding:9px 10px;font-size:12px;font-weight:750;cursor:pointer}.match-tab.active{background:var(--green);border-color:var(--green);color:#091421}.match-panel[hidden]{display:none}.match-panel>strong{display:block;color:var(--green2);margin:2px 0 8px}.match-card .match{margin-bottom:10px}
 .disclaimer{margin-top:18px;padding:13px 15px;border:1px solid #344553;border-radius:13px;color:#a9bac9;font-size:12px;background:#0c1926}
@@ -50,7 +52,7 @@ footer{max-width:1100px;margin:auto;padding:0 20px 28px;color:#71869a;font-size:
 </main><footer id="appFooter" style="display:none">SUPER PRONOSTICI · Versione iniziale · Dati e modelli AI da collegare</footer>
 <script>
 const leagues=[{tab:"seriea",name:"Serie A"},{tab:"epl",name:"Premier League"},{tab:"laliga",name:"La Liga"},{tab:"bundesliga",name:"Bundesliga"},{tab:"ligue1",name:"Ligue 1"},{tab:"ucl",name:"Champions League"},{tab:"uel",name:"Europa League"}];
-let currentTab="oggi", liveData=null;
+let currentTab="oggi", liveData=null, matchesRealtimeChannel=null;
 const SUPABASE_URL="https://exphhqunlvlyzjvrxdla.supabase.co";
 const SUPABASE_KEY="sb_publishable_ogiqcvuNnOjlqT5ADuqpAg_-KTAEiuz";
 const ADMIN_EMAIL="frankferra7@gmail.com";
@@ -61,12 +63,75 @@ const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&
 const dateFms=s=>new Intl.DateTimeFormat('it-IT',{dateStyle:'medium',timeStyle:'short'}).format(new Date(s));
 const pct=n=>Number.isFinite(n)?n+"%":"—";
 
+function normalizeMatchRow(row){
+  if(!row)return null;
+  const home=row.home_team??row.home??"";
+  const away=row.away_team??row.away??"";
+  return{
+    ...row,
+    home,
+    away,
+    lineups:(row.lineups&&(row.lineups.home||row.lineups.away))
+      ?row.lineups
+      :{home:row.home_lineup??null,away:row.away_lineup??null}
+  };
+}
+
+function setLiveBadge(state){
+  const todayEl=document.getElementById('today');
+  if(!todayEl)return;
+  const label=state==="subscribed"?"Live sync attivo":state==="error"?"Realtime in riconnessione":"Connessione live...";
+  const dotColor=state==="subscribed"?"var(--green)":state==="error"?"#f59e0b":"#91a4b8";
+  todayEl.innerHTML='Aggiornato da Supabase <span class="live-pill"><span class="live-dot" style="background:'+dotColor+';box-shadow:0 0 8px '+dotColor+'"></span>'+esc(label)+'</span>';
+}
+
+function subscribeMatchesRealtime(){
+  if(matchesRealtimeChannel){
+    authClient.removeChannel(matchesRealtimeChannel);
+    matchesRealtimeChannel=null;
+  }
+  setLiveBadge("connecting");
+
+  matchesRealtimeChannel=authClient
+    .channel('public-matches-live')
+    .on('postgres_changes',{event:'*',schema:'public',table:'matches'},payload=>{
+      const currentList=liveData?.matches||[];
+      let nextList=[...currentList];
+
+      if(payload.eventType==="DELETE"){
+        const oldId=String(payload.old?.id??"");
+        nextList=nextList.filter(m=>String(m.id)!==oldId);
+      }else{
+        const normalized=normalizeMatchRow(payload.new);
+        if(!normalized||!normalized.id)return;
+        if(String(normalized.home||"").startsWith("Home #"))return;
+
+        const idx=nextList.findIndex(m=>String(m.id)===String(normalized.id));
+        if(idx>=0){
+          nextList[idx]={...nextList[idx],...normalized};
+        }else{
+          nextList.push(normalized);
+        }
+      }
+
+      nextList.sort((a,b)=>new Date(a.kickoff).getTime()-new Date(b.kickoff).getTime());
+      liveData={generatedAt:new Date().toISOString(),matches:nextList};
+      render();
+    })
+    .subscribe(status=>{
+      if(status==="SUBSCRIBED"){
+        setLiveBadge("subscribed");
+      }else if(status==="CHANNEL_ERROR"||status==="TIMED_OUT"){
+        setLiveBadge("error");
+      }
+    });
+}
+
 function matchCard(m){
 const p=m.prediction;
 const markets=p?'<div class="chips"><span class="chip">1 <b>'+pct(p.oneXTwo.home)+'</b></span><span class="chip">X <b>'+pct(p.oneXTwo.draw)+'</b></span><span class="chip">2 <b>'+pct(p.oneXTwo.away)+'</b></span></div><div class="chips" style="margin-top:7px"><span class="chip">Over 2.5 <b>'+pct(p.over25)+'</b></span><span class="chip">Under 2.5 <b>'+pct(p.under25)+'</b></span><span class="chip">Goal <b>'+pct(p.bothTeamsToScore)+'</b></span></div><div class="note">Doppia chance: 1X '+pct(p.doubleChance["1X"])+' · X2 '+pct(p.doubleChance.X2)+' · 12 '+pct(p.doubleChance["12"])+'</div>':'<div class="note">⚠️ '+esc(m.reason)+'</div>';
 const matchId=esc(m.id);
 
-// Renderizziamo i dati statistici individuali dei giocatori se presenti nel database
 const stats=m.player_stats||m.playerStats||{};
 const renderList=(items,formatter)=>{
   if(!items||!items.length)return '<div class="note">Dati non ancora disponibili.</div>';
@@ -77,7 +142,6 @@ const ammonitiHtml=renderList(stats.ammoniti, x=>'<li style="padding:6px 0;borde
 const tiriHtml=renderList(stats.tiri, x=>'<li style="padding:6px 0;border-bottom:1px solid #23384b;display:flex;justify-content:space-between"><span><b>'+esc(x.name)+'</b> <small style="color:var(--muted)">('+esc(x.team)+')</small></span><span style="color:var(--green)">'+esc(x.prob)+'</span></li>');
 const marcatoriHtml=renderList(stats.marcatori, x=>'<li style="padding:6px 0;border-bottom:1px solid #23384b;display:flex;justify-content:space-between"><span><b>'+esc(x.name)+'</b> <small style="color:var(--muted)">('+esc(x.team)+')</small></span><span style="color:var(--green)">'+esc(x.prob)+'</span></li>');
 
-// Renderizziamo il tab Formazioni (Probabili o Ufficiali)
 const lin = (m.lineups && (m.lineups.home || m.lineups.away))
   ? m.lineups
   : (m.player_stats || {});
@@ -152,7 +216,6 @@ card.querySelectorAll('[data-match-panel]').forEach(panel=>{panel.hidden=panel.d
 
 async function loadData(){
 try{
-// Carichiamo direttamente dalla tabella matches di Supabase
 const { data, error } = await authClient
   .from('matches')
   .select('*')
@@ -160,13 +223,17 @@ const { data, error } = await authClient
 
 if(error) throw error;
 
+const cleanMatches=(data||[])
+  .map(normalizeMatchRow)
+  .filter(m=>m&&!String(m.home||"").startsWith("Home #%"));
+
 liveData={
   generatedAt: new Date().toISOString(),
-  matches: data || []
+  matches: cleanMatches
 };
 
 render();
-document.getElementById('today').textContent='Aggiornato da Supabase';
+subscribeMatchesRealtime();
 }catch(e){
 console.error('Errore caricamento partite da Supabase:',e);
 render();
@@ -175,7 +242,13 @@ document.getElementById('content').innerHTML='<div class="card empty">Nessuna pa
 }
 }
 
-async function signOut(){await authClient.auth.signOut();}
+async function signOut(){
+if(matchesRealtimeChannel){
+  authClient.removeChannel(matchesRealtimeChannel);
+  matchesRealtimeChannel=null;
+}
+await authClient.auth.signOut();
+}
 document.getElementById('appLogout').addEventListener('click',signOut);
 document.getElementById('authLogout').addEventListener('click',signOut);
 
