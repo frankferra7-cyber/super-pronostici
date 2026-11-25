@@ -78,7 +78,9 @@ const tiriHtml=renderList(stats.tiri, x=>'<li style="padding:6px 0;border-bottom
 const marcatoriHtml=renderList(stats.marcatori, x=>'<li style="padding:6px 0;border-bottom:1px solid #23384b;display:flex;justify-content:space-between"><span><b>'+esc(x.name)+'</b> <small style="color:var(--muted)">('+esc(x.team)+')</small></span><span style="color:var(--green)">'+esc(x.prob)+'</span></li>');
 
 // Renderizziamo il tab Formazioni (Probabili o Ufficiali)
-const lin=m.lineups||{};
+const lin = (m.lineups && (m.lineups.home || m.lineups.away))
+  ? m.lineups
+  : (m.player_stats || {});
 const renderTeamLineup=(teamObj, teamName)=>{
   if(!teamObj || !teamObj.startXI || !teamObj.startXI.length) return '<p class="note">Formazione non ancora disponibile per '+esc(teamName)+'</p>';
   const isOff = teamObj.isOfficial === true;
