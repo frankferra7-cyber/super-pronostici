@@ -146,7 +146,7 @@ const lin = (m.lineups && (m.lineups.home || m.lineups.away))
   ? m.lineups
   : (m.player_stats || {});
 const renderTeamLineup=(teamObj, teamName)=>{
-  if(!teamObj || !teamObj.startXI || !teamObj.startXI.length) return '<p class="note">Formazione non ancora disponibile per '+esc(teamName)+'</p>';
+  if(!teamObj || !teamObj.startXI || !teamObj.startXI.length) return '<p class="note">In attesa delle formazioni</p>';
   const isOff = teamObj.isOfficial === true;
   const badgeColor = isOff ? '#16a34a' : '#d97706';
   const badgeText = isOff ? 'UFFICIALE' : 'PROBABILE';
