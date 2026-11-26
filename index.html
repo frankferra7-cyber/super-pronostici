@@ -113,28 +113,11 @@
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
       align-items: center;
-      gap: 10px;
-      margin: 14px 0 6px;
+      gap: 8px;
+      margin: 14px 0 4px;
     }
-    .team {
-      font-weight: 750;
-      font-size: 15px;
-      line-height: 1.25;
-      min-width: 0;
-      overflow-wrap: anywhere;
-    }
-    .team.home-team { text-align: left; }
-    .team.away-team { text-align: right; }
-    .vs {
-      color: var(--muted);
-      font-size: 11px;
-      font-weight: 700;
-      flex-shrink: 0;
-      padding: 2px 6px;
-      border-radius: 999px;
-      background: #0b1927;
-      border: 1px solid #23384b;
-    }
+    .team { font-weight: 750; font-size: 15px; min-width: 0; overflow-wrap: anywhere; }
+    .vs { color: var(--muted); font-size: 11px; flex-shrink: 0; }
     .time { font-size: 12px; color: var(--muted); }
     .chips { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 12px; }
     .chip { background: #1c3448; border: 1px solid #2c485c; border-radius: 9px; padding: 6px 9px; font-size: 12px; color: #dce8f2; }
@@ -513,9 +496,9 @@
         <article class="card match-card" data-match-id="${esc(m.id)}">
           <div class="league">${esc(m.league)}</div>
           <div class="match">
-            <div class="team home-team">${esc(m.home)}</div>
+            <div class="team">${esc(m.home)}</div>
             <div class="vs">VS</div>
-            <div class="team away-team">${esc(m.away)}</div>
+            <div class="team" style="text-align:right;">${esc(m.away)}</div>
           </div>
           <div class="time">${fmtDate(m.kickoff)}</div>
 
