@@ -328,25 +328,17 @@
         .replace(/\s+/g, " ");
     }
 
-    function mergeMatchPair(base, incoming) {
-      const hasBetterPred =
-        incoming.prediction &&
-        (!base.prediction || JSON.stringify(incoming.prediction).length > JSON.stringify(base.prediction).length);
-
-      return {
-        ...base,
-        ...incoming,
-        home: base.home_lineup?.startXI?.length ? base.home : (incoming.home || base.home),
-        away: base.away_lineup?.startXI?.length ? base.away : (incoming.away || base.away),
-        home_lineup: base.home_lineup?.startXI?.length ? base.home_lineup : incoming.home_lineup,
-        away_lineup: base.away_lineup?.startXI?.length ? base.away_lineup : incoming.away_lineup,
-        prediction: hasBetterPred ? incoming.prediction : (base.prediction || incoming.prediction),
-        player_stats: {
-          marcatori: base.player_stats?.marcatori?.length ? base.player_stats.marcatori : (incoming.player_stats?.marcatori || []),
-          tiri: base.player_stats?.tiri?.length ? base.player_stats.tiri : (incoming.player_stats?.tiri || []),
-          ammoniti: base.player_stats?.ammoniti?.length ? base.player_stats.ammoniti : (incoming.player_stats?.ammoniti || []),
-        },
-      };
+    function recordCompletenessScore(m) {
+      let score = 0;
+      if (m.home_lineup?.startXI?.length) score += m.home_lineup.startXI.length;
+      if (m.away_lineup?.startXI?.length) score += m.away_lineup.startXI.length;
+      if (m.home_lineup?.isOfficial) score += 25;
+      if (m.away_lineup?.isOfficial) score += 25;
+      if (m.player_stats?.marcatori?.length) score += 10;
+      if (m.player_stats?.tiri?.length) score += 10;
+      if (m.player_stats?.ammoniti?.length) score += 10;
+      if (m.prediction && Number(m.prediction?.oneXTwo?.home) !== 45) score += 5;
+      return score;
     }
 
     function dedupeMatches(list) {
@@ -362,7 +354,10 @@
         if (!map.has(key)) {
           map.set(key, m);
         } else {
-          map.set(key, mergeMatchPair(map.get(key), m));
+          const prev = map.get(key);
+          if (recordCompletenessScore(m) > recordCompletenessScore(prev)) {
+            map.set(key, m);
+          }
         }
       }
       return Array.from(map.values());
@@ -420,12 +415,8 @@
       const hasT = Array.isArray(raw.tiri) && raw.tiri.length > 0;
       const hasA = Array.isArray(raw.ammoniti) && raw.ammoniti.length > 0;
 
-      if (hasM || hasT || hasA) {
-        return {
-          marcatori: hasM ? raw.marcatori : [],
-          tiri: hasT ? raw.tiri : [],
-          ammoniti: hasA ? raw.ammoniti : [],
-        };
+      if (hasM && hasT && hasA) {
+        return { marcatori: raw.marcatori, tiri: raw.tiri, ammoniti: raw.ammoniti };
       }
 
       const teams = [
@@ -462,39 +453,12 @@
         });
       }
 
-      if (scorers.length || shooters.length || booked.length) {
-        const top = (arr) => arr.sort((a, b) => b._v - a._v).slice(0, 6).map(({ name, team, prob }) => ({ name, team, prob }));
-        return {
-          marcatori: top(scorers),
-          tiri: top(shooters),
-          ammoniti: top(booked),
-        };
-      }
-
-      const xgHome = Number(m.prediction?.expectedGoals?.home ?? 1.4);
-      const xgAway = Number(m.prediction?.expectedGoals?.away ?? 1.0);
-      const pHome = Math.min(62, Math.max(14, Math.round(xgHome * 24)));
-      const pAway = Math.min(58, Math.max(12, Math.round(xgAway * 24)));
+      const top = (arr) => arr.sort((a, b) => b._v - a._v).slice(0, 6).map(({ name, team, prob }) => ({ name, team, prob }));
 
       return {
-        marcatori: [
-          { name: `Attaccante ${m.home}`, team: m.home, prob: `${pHome}%` },
-          { name: `Trequartista / Esterno ${m.home}`, team: m.home, prob: `${Math.max(8, pHome - 9)}%` },
-          { name: `Attaccante ${m.away}`, team: m.away, prob: `${pAway}%` },
-          { name: `Trequartista / Esterno ${m.away}`, team: m.away, prob: `${Math.max(8, pAway - 8)}%` },
-        ],
-        tiri: [
-          { name: `Punta / Esterno ${m.home}`, team: m.home, prob: `${Math.min(85, pHome + 26)}%` },
-          { name: `Mezzala / Trequartista ${m.home}`, team: m.home, prob: `${Math.min(75, pHome + 12)}%` },
-          { name: `Punta / Esterno ${m.away}`, team: m.away, prob: `${Math.min(82, pAway + 24)}%` },
-          { name: `Mezzala / Trequartista ${m.away}`, team: m.away, prob: `${Math.min(72, pAway + 10)}%` },
-        ],
-        ammoniti: [
-          { name: `Mediano / Difensore ${m.home}`, team: m.home, prob: "26%" },
-          { name: `Terzino / Centrale ${m.away}`, team: m.away, prob: "25%" },
-          { name: `Centrocampista ${m.home}`, team: m.home, prob: "21%" },
-          { name: `Centrocampista ${m.away}`, team: m.away, prob: "20%" },
-        ],
+        marcatori: hasM ? raw.marcatori : top(scorers),
+        tiri: hasT ? raw.tiri : top(shooters),
+        ammoniti: hasA ? raw.ammoniti : top(booked),
       };
     }
 
