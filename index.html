@@ -319,17 +319,49 @@
       };
     }
 
+    function normTeamKey(name) {
+      return String(name ?? "")
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/\b(fc|cfc|ac|as|ss|ssc|us|calcio|football club|club|sportiva|polisportiva|1899|1900|1907|1908|1909|1919|1926|1927)\b/gi, " ")
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim()
+        .replace(/\s+/g, " ");
+    }
+
+    function recordCompletenessScore(m) {
+      let score = 0;
+      if (m.home_lineup?.startXI?.length) score += m.home_lineup.startXI.length;
+      if (m.away_lineup?.startXI?.length) score += m.away_lineup.startXI.length;
+      if (m.home_lineup?.isOfficial) score += 25;
+      if (m.away_lineup?.isOfficial) score += 25;
+      if (m.player_stats?.marcatori?.length) score += 10;
+      if (m.player_stats?.tiri?.length) score += 10;
+      if (m.player_stats?.ammoniti?.length) score += 10;
+      return score;
+    }
+
     function dedupeMatches(list) {
-      const seen = new Set();
-      return (list || []).filter((m) => {
-        if (!m || !m.home || !m.away) return false;
-        const key = m.id != null
-          ? `id:${String(m.id)}`
-          : `match:${String(m.league || "").toLowerCase()}|${String(m.home).toLowerCase()}|${String(m.away).toLowerCase()}|${String(m.kickoff || "")}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
+      const map = new Map();
+      for (const m of list || []) {
+        if (!m || !m.home || !m.away) continue;
+        const h = normTeamKey(m.home);
+        const a = normTeamKey(m.away);
+        const lg = String(m.league || "").trim().toLowerCase();
+        const slot = m.kickoff ? Math.round(new Date(m.kickoff).getTime() / (3 * 3600 * 1000)) : "";
+        const key = `${lg}|${h}|${a}|${slot}`;
+
+        if (!map.has(key)) {
+          map.set(key, m);
+        } else {
+          const prev = map.get(key);
+          if (recordCompletenessScore(m) > recordCompletenessScore(prev)) {
+            map.set(key, m);
+          }
+        }
+      }
+      return Array.from(map.values());
     }
 
     function setLiveStatus(state) {
