@@ -319,6 +319,19 @@
       };
     }
 
+    function dedupeMatches(list) {
+      const seen = new Set();
+      return (list || []).filter((m) => {
+        if (!m || !m.home || !m.away) return false;
+        const key = m.id != null
+          ? `id:${String(m.id)}`
+          : `match:${String(m.league || "").toLowerCase()}|${String(m.home).toLowerCase()}|${String(m.away).toLowerCase()}|${String(m.kickoff || "")}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
+
     function setLiveStatus(state) {
       const el = document.getElementById("statusBar");
       if (!el) return;
@@ -523,14 +536,14 @@
 
       if (currentTab === "storico") {
         titleEl.textContent = "Storico";
-        const past = matchesData.filter((m) => new Date(m.kickoff) < new Date() && matchesSelectedDate(m.kickoff));
+        const past = dedupeMatches(matchesData).filter((m) => new Date(m.kickoff) < new Date() && matchesSelectedDate(m.kickoff));
         contentEl.innerHTML = past.length
           ? past.map(matchCard).join("")
           : `<div class="card empty">Nessuna partita passata disponibile per questo filtro.</div>`;
         return;
       }
 
-      const upcoming = matchesData.filter((m) => new Date(m.kickoff) >= new Date() && matchesSelectedDate(m.kickoff));
+      const upcoming = dedupeMatches(matchesData).filter((m) => new Date(m.kickoff) >= new Date() && matchesSelectedDate(m.kickoff));
       const selectedLeague = LEAGUES.find((l) => l.tab === currentTab);
       const baseTitle = selectedLeague ? selectedLeague.name : (currentTab === "oggi" ? "Partite in programma" : "Tutte le partite");
       titleEl.textContent = selectedDateFilter ? `${baseTitle} · ${selectedDateFilter}` : baseTitle;
@@ -565,7 +578,7 @@
         document.getElementById("content").innerHTML = `<div class="card empty">Errore nel caricamento delle partite.</div>`;
         return;
       }
-      matchesData = (data || []).map(normalizeRow).filter((m) => m && m.home && m.away);
+      matchesData = dedupeMatches((data || []).map(normalizeRow));
       render();
       subscribeRealtime();
     }
@@ -581,7 +594,7 @@
         .on("postgres_changes", { event: "*", schema: "public", table: "matches" }, async () => {
           const { data } = await sb.from("matches").select("*").order("kickoff", { ascending: true });
           if (data) {
-            matchesData = data.map(normalizeRow).filter((m) => m && m.home && m.away);
+            matchesData = dedupeMatches(data.map(normalizeRow));
             render();
           }
         })
