@@ -404,6 +404,7 @@
             <button type="button" class="match-tab ${activePanel === "partita" ? "active" : ""}" data-panel="partita">Partita</button>
             <button type="button" class="match-tab ${activePanel === "formazioni" ? "active" : ""}" data-panel="formazioni">📋 Formazioni</button>
             <button type="button" class="match-tab ${activePanel === "marcatori" ? "active" : ""}" data-panel="marcatori">🎯 Marcatori</button>
+            <button type="button" class="match-tab ${activePanel === "tiri" ? "active" : ""}" data-panel="tiri">🎯 Tiri in porta</button>
             <button type="button" class="match-tab ${activePanel === "ammoniti" ? "active" : ""}" data-panel="ammoniti">🟨 Ammoniti</button>
           </div>
 
@@ -415,6 +416,7 @@
             </div>
           </div>
           <div class="match-panel" data-view="marcatori" ${activePanel === "marcatori" ? "" : "hidden"}>${renderPlayerList(stats.marcatori)}</div>
+          <div class="match-panel" data-view="tiri" ${activePanel === "tiri" ? "" : "hidden"}>${renderPlayerList(stats.tiri)}</div>
           <div class="match-panel" data-view="ammoniti" ${activePanel === "ammoniti" ? "" : "hidden"}>${renderPlayerList(stats.ammoniti)}</div>
         </article>
       `;
@@ -673,7 +675,7 @@
       const matchId = card?.dataset.matchId;
       const targetView = tabBtn.dataset.panel;
       if (matchId && targetView) {
-        openMatchTabs[matchId] = targetView;
+        openMatchTabs[String(matchId)] = targetView;
       }
       card.querySelectorAll(".match-tab").forEach((b) => b.classList.toggle("active", b === tabBtn));
       card.querySelectorAll(".match-panel").forEach((p) => {
