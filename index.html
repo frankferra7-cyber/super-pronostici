@@ -365,12 +365,96 @@
       `).join("")}</ul>`;
     }
 
+    function getEffectivePlayerStats(m) {
+      const raw = m.player_stats || {};
+      const hasM = Array.isArray(raw.marcatori) && raw.marcatori.length > 0;
+      const hasT = Array.isArray(raw.tiri) && raw.tiri.length > 0;
+      const hasA = Array.isArray(raw.ammoniti) && raw.ammoniti.length > 0;
+
+      if (hasM || hasT || hasA) {
+        return {
+          marcatori: hasM ? raw.marcatori : [],
+          tiri: hasT ? raw.tiri : [],
+          ammoniti: hasA ? raw.ammoniti : [],
+        };
+      }
+
+      const teams = [
+        { lineup: m.home_lineup, team: m.home, xg: Number(m.prediction?.expectedGoals?.home ?? 1.4) },
+        { lineup: m.away_lineup, team: m.away, xg: Number(m.prediction?.expectedGoals?.away ?? 1.0) },
+      ];
+
+      const scorers = [];
+      const shooters = [];
+      const booked = [];
+
+      for (const t of teams) {
+        const xi = Array.isArray(t.lineup?.startXI) ? t.lineup.startXI : [];
+        const teamName = t.lineup?.teamName || t.team || "";
+        const factor = Math.max(0.55, Math.min(1.6, t.xg / 1.25));
+
+        xi.forEach((p, idx) => {
+          const name = String(p?.name || "").trim();
+          const pos = String(p?.pos || "").toUpperCase();
+          if (!name || /^(G|GK|POR)$/.test(pos) || /GOALKEEPER|PORTIERE/.test(pos)) return;
+
+          const isFwd = /^(F|FW|ST|CF|LW|RW|ATT)$/.test(pos) || /FORWARD|STRIKER|ATTACCANTE/.test(pos);
+          const isMid = /^(M|MF|CM|AM|DM|RM|LM|CEN)$/.test(pos) || /MIDFIELDER|CENTROCAMPISTA/.test(pos);
+          const isDef = /^(D|DF|CB|LB|RB|WB|DIF)$/.test(pos) || /DEFENDER|DIFENSORE/.test(pos);
+          const isDm = /DM|CDM|DEFENSIVE/.test(pos);
+
+          const gProb = Math.min(68, Math.max(4, Math.round((isFwd ? 28 : isMid ? 14 : isDef ? 5 : 10) * factor - idx * 0.4)));
+          const sProb = Math.min(86, Math.max(12, Math.round((isFwd ? 66 : isMid ? 44 : isDef ? 20 : 35) * factor - idx * 0.5)));
+          const cProb = Math.min(48, Math.max(7, Math.round((isDef ? 26 : isDm ? 25 : isMid ? 20 : isFwd ? 11 : 16) + (idx % 3) * 2)));
+
+          scorers.push({ name, team: teamName, prob: `${gProb}%`, _v: gProb });
+          shooters.push({ name, team: teamName, prob: `${sProb}%`, _v: sProb });
+          booked.push({ name, team: teamName, prob: `${cProb}%`, _v: cProb });
+        });
+      }
+
+      if (scorers.length || shooters.length || booked.length) {
+        const top = (arr) => arr.sort((a, b) => b._v - a._v).slice(0, 6).map(({ name, team, prob }) => ({ name, team, prob }));
+        return {
+          marcatori: top(scorers),
+          tiri: top(shooters),
+          ammoniti: top(booked),
+        };
+      }
+
+      const xgHome = Number(m.prediction?.expectedGoals?.home ?? 1.4);
+      const xgAway = Number(m.prediction?.expectedGoals?.away ?? 1.0);
+      const pHome = Math.min(62, Math.max(14, Math.round(xgHome * 24)));
+      const pAway = Math.min(58, Math.max(12, Math.round(xgAway * 24)));
+
+      return {
+        marcatori: [
+          { name: `Attaccante ${m.home}`, team: m.home, prob: `${pHome}%` },
+          { name: `Trequartista / Esterno ${m.home}`, team: m.home, prob: `${Math.max(8, pHome - 9)}%` },
+          { name: `Attaccante ${m.away}`, team: m.away, prob: `${pAway}%` },
+          { name: `Trequartista / Esterno ${m.away}`, team: m.away, prob: `${Math.max(8, pAway - 8)}%` },
+        ],
+        tiri: [
+          { name: `Punta / Esterno ${m.home}`, team: m.home, prob: `${Math.min(85, pHome + 26)}%` },
+          { name: `Mezzala / Trequartista ${m.home}`, team: m.home, prob: `${Math.min(75, pHome + 12)}%` },
+          { name: `Punta / Esterno ${m.away}`, team: m.away, prob: `${Math.min(82, pAway + 24)}%` },
+          { name: `Mezzala / Trequartista ${m.away}`, team: m.away, prob: `${Math.min(72, pAway + 10)}%` },
+        ],
+        ammoniti: [
+          { name: `Mediano / Difensore ${m.home}`, team: m.home, prob: "26%" },
+          { name: `Terzino / Centrale ${m.away}`, team: m.away, prob: "25%" },
+          { name: `Centrocampista ${m.home}`, team: m.home, prob: "21%" },
+          { name: `Centrocampista ${m.away}`, team: m.away, prob: "20%" },
+        ],
+      };
+    }
+
     function matchCard(m) {
       const p = m.prediction || null;
       const o1x2 = p?.oneXTwo || {};
       const dc = p?.doubleChance || {};
       const eg = p?.expectedGoals || {};
-      const stats = m.player_stats || {};
+      const stats = getEffectivePlayerStats(m);
       const activePanel = openMatchTabs[String(m.id)] || "partita";
 
       const marketsHtml = p
