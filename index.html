@@ -319,17 +319,53 @@
       };
     }
 
+    function normTeamKey(name) {
+      return String(name ?? "")
+        .toLowerCase()
+        .replace(/\b(fc|cfc|ac|as|ss|ssc|us|calcio|football club|club)\b/gi, " ")
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim()
+        .replace(/\s+/g, " ");
+    }
+
+    function mergeMatchPair(base, incoming) {
+      const hasBetterPred =
+        incoming.prediction &&
+        (!base.prediction || JSON.stringify(incoming.prediction).length > JSON.stringify(base.prediction).length);
+
+      return {
+        ...base,
+        ...incoming,
+        home: base.home_lineup?.startXI?.length ? base.home : (incoming.home || base.home),
+        away: base.away_lineup?.startXI?.length ? base.away : (incoming.away || base.away),
+        home_lineup: base.home_lineup?.startXI?.length ? base.home_lineup : incoming.home_lineup,
+        away_lineup: base.away_lineup?.startXI?.length ? base.away_lineup : incoming.away_lineup,
+        prediction: hasBetterPred ? incoming.prediction : (base.prediction || incoming.prediction),
+        player_stats: {
+          marcatori: base.player_stats?.marcatori?.length ? base.player_stats.marcatori : (incoming.player_stats?.marcatori || []),
+          tiri: base.player_stats?.tiri?.length ? base.player_stats.tiri : (incoming.player_stats?.tiri || []),
+          ammoniti: base.player_stats?.ammoniti?.length ? base.player_stats.ammoniti : (incoming.player_stats?.ammoniti || []),
+        },
+      };
+    }
+
     function dedupeMatches(list) {
-      const seen = new Set();
-      return (list || []).filter((m) => {
-        if (!m || !m.home || !m.away) return false;
-        const key = m.id != null
-          ? `id:${String(m.id)}`
-          : `match:${String(m.league || "").toLowerCase()}|${String(m.home).toLowerCase()}|${String(m.away).toLowerCase()}|${String(m.kickoff || "")}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
+      const map = new Map();
+      for (const m of list || []) {
+        if (!m || !m.home || !m.away) continue;
+        const h = normTeamKey(m.home);
+        const a = normTeamKey(m.away);
+        const lg = String(m.league || "").trim().toLowerCase();
+        const slot = m.kickoff ? Math.round(new Date(m.kickoff).getTime() / (3 * 3600 * 1000)) : "";
+        const key = `${lg}|${h}|${a}|${slot}`;
+
+        if (!map.has(key)) {
+          map.set(key, m);
+        } else {
+          map.set(key, mergeMatchPair(map.get(key), m));
+        }
+      }
+      return Array.from(map.values());
     }
 
     function setLiveStatus(state) {
