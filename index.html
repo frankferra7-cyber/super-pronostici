@@ -70,13 +70,30 @@
     .eyebrow { color: var(--green); font-size: 11px; font-weight: 800; letter-spacing: .18em; text-transform: uppercase; }
     .hero h1 { font-size: clamp(28px, 5vw, 44px); line-height: 1.08; margin: 8px 0; }
     .hero p { color: var(--muted); max-width: 650px; margin: 10px 0 0; }
-    nav { display: flex; gap: 8px; overflow-x: auto; padding: 8px 0 18px; }
+    nav { display: flex; gap: 8px; overflow-x: auto; padding: 8px 0 12px; }
     nav button {
       white-space: nowrap; background: var(--panel); color: #c6d4e1;
       border: 1px solid var(--line); border-radius: 12px;
       padding: 10px 14px; font-weight: 650; cursor: pointer;
     }
     nav button.active { background: var(--green); border-color: var(--green); color: #091421; }
+
+    .calendar-bar {
+      display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+      background: var(--panel); border: 1px solid var(--line);
+      border-radius: 14px; padding: 10px 12px; margin-bottom: 16px;
+    }
+    .calendar-bar .cal-label { font-size: 12px; font-weight: 700; color: var(--green2); margin-right: 4px; }
+    .cal-btn {
+      background: #0b1927; color: #c6d4e1; border: 1px solid #2b4256;
+      border-radius: 10px; padding: 7px 12px; font-size: 12px; font-weight: 700; cursor: pointer;
+    }
+    .cal-btn.active { background: var(--green); border-color: var(--green); color: #091421; }
+    .cal-date {
+      background: #07111f; color: var(--text); border: 1px solid #355068;
+      border-radius: 10px; padding: 6px 10px; font-size: 13px; color-scheme: dark;
+    }
+
     .section-head {
       display: flex; align-items: end; justify-content: space-between;
       gap: 10px; margin: 8px 0 14px; flex-wrap: wrap;
@@ -219,6 +236,14 @@
       <button data-tab="storico">Storico</button>
     </nav>
 
+    <div class="calendar-bar" aria-label="Filtro calendario">
+      <span class="cal-label">📅 Calendario:</span>
+      <button type="button" class="cal-btn active" data-cal="all">Tutte le date</button>
+      <button type="button" class="cal-btn" data-cal="today">Oggi</button>
+      <button type="button" class="cal-btn" data-cal="tomorrow">Domani</button>
+      <input id="calDateInput" class="cal-date" type="date" aria-label="Scegli data dal calendario" />
+    </div>
+
     <section>
       <div class="section-head">
         <h2 id="sectionTitle">Partite in programma</h2>
@@ -252,6 +277,7 @@
 
     const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
     let currentTab = "oggi";
+    let selectedDateFilter = null; // null = tutte le date, "YYYY-MM-DD" = giorno specifico
     let authMode = "login";
     let matchesData = [];
     let isAdmin = false;
@@ -262,6 +288,24 @@
     }[c]));
     const fmtDate = (iso) => new Intl.DateTimeFormat("it-IT", { dateStyle: "medium", timeStyle: "short" }).format(new Date(iso));
     const pct = (n) => Number.isFinite(Number(n)) ? `${Number(n)}%` : "—";
+
+    function toLocalYmd(dateObj = new Date()) {
+      const y = dateObj.getFullYear();
+      const m = String(dateObj.getMonth() + 1).padStart(2, "0");
+      const d = String(dateObj.getDate()).padStart(2, "0");
+      return `${y}-${m}-${d}`;
+    }
+
+    function matchesSelectedDate(isoKickoff) {
+      if (!selectedDateFilter) return true;
+      return toLocalYmd(new Date(isoKickoff)) === selectedDateFilter;
+    }
+
+    function syncCalendarButtons(mode) {
+      document.querySelectorAll(".cal-btn").forEach((b) => {
+        b.classList.toggle("active", b.dataset.cal === mode);
+      });
+    }
 
     function normalizeRow(row) {
       if (!row) return null;
@@ -391,23 +435,24 @@
 
       if (currentTab === "storico") {
         titleEl.textContent = "Storico";
-        const past = matchesData.filter((m) => new Date(m.kickoff) < new Date());
+        const past = matchesData.filter((m) => new Date(m.kickoff) < new Date() && matchesSelectedDate(m.kickoff));
         contentEl.innerHTML = past.length
           ? past.map(matchCard).join("")
-          : `<div class="card empty">Nessuna partita passata disponibile al momento.</div>`;
+          : `<div class="card empty">Nessuna partita passata disponibile per questo filtro.</div>`;
         return;
       }
 
-      const upcoming = matchesData.filter((m) => new Date(m.kickoff) >= new Date());
+      const upcoming = matchesData.filter((m) => new Date(m.kickoff) >= new Date() && matchesSelectedDate(m.kickoff));
       const selectedLeague = LEAGUES.find((l) => l.tab === currentTab);
-      titleEl.textContent = selectedLeague ? selectedLeague.name : (currentTab === "oggi" ? "Partite in programma" : "Tutte le partite");
+      const baseTitle = selectedLeague ? selectedLeague.name : (currentTab === "oggi" ? "Partite in programma" : "Tutte le partite");
+      titleEl.textContent = selectedDateFilter ? `${baseTitle} · ${selectedDateFilter}` : baseTitle;
 
       const list = selectedLeague
         ? upcoming.filter((m) => m.league === selectedLeague.name)
-        : (currentTab === "oggi" ? upcoming.slice(0, 8) : upcoming);
+        : (currentTab === "oggi" && !selectedDateFilter ? upcoming.slice(0, 12) : upcoming);
 
       if (!list.length) {
-        contentEl.innerHTML = `<div class="card empty">Nessuna partita futura disponibile per questa sezione.</div>`;
+        contentEl.innerHTML = `<div class="card empty">Nessuna partita disponibile per la data o il campionato selezionato.</div>`;
         return;
       }
 
@@ -512,6 +557,34 @@
         panel.append(row);
       });
     }
+
+    document.querySelectorAll(".cal-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const mode = btn.dataset.cal;
+        const dateInput = document.getElementById("calDateInput");
+        syncCalendarButtons(mode);
+        if (mode === "all") {
+          selectedDateFilter = null;
+          dateInput.value = "";
+        } else if (mode === "today") {
+          selectedDateFilter = toLocalYmd(new Date());
+          dateInput.value = selectedDateFilter;
+        } else if (mode === "tomorrow") {
+          const d = new Date();
+          d.setDate(d.getDate() + 1);
+          selectedDateFilter = toLocalYmd(d);
+          dateInput.value = selectedDateFilter;
+        }
+        render();
+      });
+    });
+
+    document.getElementById("calDateInput").addEventListener("change", (e) => {
+      const val = e.target.value;
+      selectedDateFilter = val || null;
+      syncCalendarButtons(val ? "custom" : "all");
+      render();
+    });
 
     function setAuthMode(mode) {
       authMode = mode;
