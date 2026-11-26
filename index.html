@@ -319,51 +319,6 @@
       };
     }
 
-    function normTeamKey(name) {
-      return String(name ?? "")
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .replace(/\b(fc|cfc|ac|as|ss|ssc|us|calcio|football club|club|sportiva|polisportiva|1899|1900|1907|1908|1909|1919|1926|1927)\b/gi, " ")
-        .replace(/[^a-z0-9]+/g, " ")
-        .trim()
-        .replace(/\s+/g, " ");
-    }
-
-    function recordCompletenessScore(m) {
-      let score = 0;
-      if (m.home_lineup?.startXI?.length) score += m.home_lineup.startXI.length;
-      if (m.away_lineup?.startXI?.length) score += m.away_lineup.startXI.length;
-      if (m.home_lineup?.isOfficial) score += 25;
-      if (m.away_lineup?.isOfficial) score += 25;
-      if (m.player_stats?.marcatori?.length) score += 10;
-      if (m.player_stats?.tiri?.length) score += 10;
-      if (m.player_stats?.ammoniti?.length) score += 10;
-      return score;
-    }
-
-    function dedupeMatches(list) {
-      const map = new Map();
-      for (const m of list || []) {
-        if (!m || !m.home || !m.away) continue;
-        const h = normTeamKey(m.home);
-        const a = normTeamKey(m.away);
-        const lg = String(m.league || "").trim().toLowerCase();
-        const slot = m.kickoff ? Math.round(new Date(m.kickoff).getTime() / (3 * 3600 * 1000)) : "";
-        const key = `${lg}|${h}|${a}|${slot}`;
-
-        if (!map.has(key)) {
-          map.set(key, m);
-        } else {
-          const prev = map.get(key);
-          if (recordCompletenessScore(m) > recordCompletenessScore(prev)) {
-            map.set(key, m);
-          }
-        }
-      }
-      return Array.from(map.values());
-    }
-
     function setLiveStatus(state) {
       const el = document.getElementById("statusBar");
       if (!el) return;
@@ -568,14 +523,14 @@
 
       if (currentTab === "storico") {
         titleEl.textContent = "Storico";
-        const past = dedupeMatches(matchesData).filter((m) => new Date(m.kickoff) < new Date() && matchesSelectedDate(m.kickoff));
+        const past = matchesData.filter((m) => new Date(m.kickoff) < new Date() && matchesSelectedDate(m.kickoff));
         contentEl.innerHTML = past.length
           ? past.map(matchCard).join("")
           : `<div class="card empty">Nessuna partita passata disponibile per questo filtro.</div>`;
         return;
       }
 
-      const upcoming = dedupeMatches(matchesData).filter((m) => new Date(m.kickoff) >= new Date() && matchesSelectedDate(m.kickoff));
+      const upcoming = matchesData.filter((m) => new Date(m.kickoff) >= new Date() && matchesSelectedDate(m.kickoff));
       const selectedLeague = LEAGUES.find((l) => l.tab === currentTab);
       const baseTitle = selectedLeague ? selectedLeague.name : (currentTab === "oggi" ? "Partite in programma" : "Tutte le partite");
       titleEl.textContent = selectedDateFilter ? `${baseTitle} · ${selectedDateFilter}` : baseTitle;
@@ -610,7 +565,7 @@
         document.getElementById("content").innerHTML = `<div class="card empty">Errore nel caricamento delle partite.</div>`;
         return;
       }
-      matchesData = dedupeMatches((data || []).map(normalizeRow));
+      matchesData = (data || []).map(normalizeRow).filter((m) => m && m.home && m.away);
       render();
       subscribeRealtime();
     }
@@ -626,7 +581,7 @@
         .on("postgres_changes", { event: "*", schema: "public", table: "matches" }, async () => {
           const { data } = await sb.from("matches").select("*").order("kickoff", { ascending: true });
           if (data) {
-            matchesData = dedupeMatches(data.map(normalizeRow));
+            matchesData = data.map(normalizeRow).filter((m) => m && m.home && m.away);
             render();
           }
         })
