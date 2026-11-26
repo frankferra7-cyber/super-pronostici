@@ -277,11 +277,12 @@
 
     const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
     let currentTab = "oggi";
-    let selectedDateFilter = null; // null = tutte le date, "YYYY-MM-DD" = giorno specifico
+    let selectedDateFilter = null;
     let authMode = "login";
     let matchesData = [];
     let isAdmin = false;
     let realtimeChannel = null;
+    const openMatchTabs = {};
 
     const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
@@ -370,6 +371,7 @@
       const dc = p?.doubleChance || {};
       const eg = p?.expectedGoals || {};
       const stats = m.player_stats || {};
+      const activePanel = openMatchTabs[String(m.id)] || "partita";
 
       const marketsHtml = p
         ? `
@@ -389,7 +391,7 @@
         : `<p class="note">Pronostico non ancora disponibile.</p>`;
 
       return `
-        <article class="card match-card">
+        <article class="card match-card" data-match-id="${esc(m.id)}">
           <div class="league">${esc(m.league)}</div>
           <div class="match">
             <div class="team">${esc(m.home)}</div>
@@ -399,21 +401,21 @@
           <div class="time">${fmtDate(m.kickoff)}</div>
 
           <div class="match-tabs">
-            <button type="button" class="match-tab active" data-panel="partita">Partita</button>
-            <button type="button" class="match-tab" data-panel="formazioni">📋 Formazioni</button>
-            <button type="button" class="match-tab" data-panel="marcatori">🎯 Marcatori</button>
-            <button type="button" class="match-tab" data-panel="ammoniti">🟨 Ammoniti</button>
+            <button type="button" class="match-tab ${activePanel === "partita" ? "active" : ""}" data-panel="partita">Partita</button>
+            <button type="button" class="match-tab ${activePanel === "formazioni" ? "active" : ""}" data-panel="formazioni">📋 Formazioni</button>
+            <button type="button" class="match-tab ${activePanel === "marcatori" ? "active" : ""}" data-panel="marcatori">🎯 Marcatori</button>
+            <button type="button" class="match-tab ${activePanel === "ammoniti" ? "active" : ""}" data-panel="ammoniti">🟨 Ammoniti</button>
           </div>
 
-          <div class="match-panel" data-view="partita">${marketsHtml}</div>
-          <div class="match-panel" data-view="formazioni" hidden>
+          <div class="match-panel" data-view="partita" ${activePanel === "partita" ? "" : "hidden"}>${marketsHtml}</div>
+          <div class="match-panel" data-view="formazioni" ${activePanel === "formazioni" ? "" : "hidden"}>
             <div class="lineups-wrap">
               ${renderTeamLineup(m.home_lineup, m.home)}
               ${renderTeamLineup(m.away_lineup, m.away)}
             </div>
           </div>
-          <div class="match-panel" data-view="marcatori" hidden>${renderPlayerList(stats.marcatori)}</div>
-          <div class="match-panel" data-view="ammoniti" hidden>${renderPlayerList(stats.ammoniti)}</div>
+          <div class="match-panel" data-view="marcatori" ${activePanel === "marcatori" ? "" : "hidden"}>${renderPlayerList(stats.marcatori)}</div>
+          <div class="match-panel" data-view="ammoniti" ${activePanel === "ammoniti" ? "" : "hidden"}>${renderPlayerList(stats.ammoniti)}</div>
         </article>
       `;
     }
@@ -449,7 +451,7 @@
 
       const list = selectedLeague
         ? upcoming.filter((m) => m.league === selectedLeague.name)
-        : (currentTab === "oggi" && !selectedDateFilter ? upcoming.slice(0, 12) : upcoming);
+        : upcoming;
 
       if (!list.length) {
         contentEl.innerHTML = `<div class="card empty">Nessuna partita disponibile per la data o il campionato selezionato.</div>`;
@@ -668,7 +670,11 @@
       const tabBtn = e.target.closest(".match-tab");
       if (!tabBtn) return;
       const card = tabBtn.closest(".match-card");
+      const matchId = card?.dataset.matchId;
       const targetView = tabBtn.dataset.panel;
+      if (matchId && targetView) {
+        openMatchTabs[matchId] = targetView;
+      }
       card.querySelectorAll(".match-tab").forEach((b) => b.classList.toggle("active", b === tabBtn));
       card.querySelectorAll(".match-panel").forEach((p) => {
         p.hidden = p.dataset.view !== targetView;
