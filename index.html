@@ -61,6 +61,13 @@
       background: #14283a; color: #dce8f2;
       border: 1px solid #315044; font-size: 12px; font-weight: 700; cursor: pointer;
     }
+    .btn-force {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 7px 12px; border-radius: 999px;
+      background: #1b3628; color: var(--green2);
+      border: 1px solid #4c8c38; font-size: 12px; font-weight: 800; cursor: pointer;
+    }
+    .btn-force:disabled { opacity: .55; cursor: not-allowed; }
     .badge-red {
       display: none; min-width: 18px; height: 18px; padding: 0 5px;
       border-radius: 10px; background: #ef4444; color: #fff;
@@ -245,6 +252,9 @@
     </div>
     <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
       <div class="private" id="accountLabel">Area riservata</div>
+      <button id="adminForceSyncBtn" class="btn-force" type="button" style="display:none;" title="Forza aggiornamento immediato da Sofascore">
+        🔄 Forza Sync Sofa
+      </button>
       <button id="adminRequestsTab" class="btn-admin" type="button" style="display:none;">
         Richieste <span id="pendingRequestsBadge" class="badge-red">0</span>
       </button>
@@ -299,6 +309,7 @@
   <script>
     const SUPABASE_URL = "https://exphhqunlvlyzjvrxdla.supabase.co";
     const SUPABASE_KEY = "sb_publishable_ogiqcvuNnOjlqT5ADuqpAg_-KTAEiuz";
+    const SYNC_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/sync-matches`;
     const ADMIN_EMAIL = "frankferra7@gmail.com";
 
     const LEAGUES = [
@@ -318,6 +329,7 @@
     let matchesData = [];
     let isAdmin = false;
     let realtimeChannel = null;
+    let syncFeedback = "";
     const openMatchTabs = {};
 
     const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({
@@ -354,7 +366,6 @@
       return new Date(m.kickoff).getTime() <= Date.now();
     }
 
-    // Mantiene la partita visibile nelle schede principali anche quando inizia e durante/subito dopo il match
     function isActiveOrUpcoming(m) {
       const st = String(m.status || "").toLowerCase();
       if (st === "inprogress") return true;
@@ -380,7 +391,7 @@
         .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, "")
         .replace(/\b(fc|cfc|ac|as|ss|ssc|us|calcio|football club|club|sportiva|polisportiva|1899|1900|1907|1908|1909|1919|1926|1927)\b/gi, " ")
-        .replace(/[^a-z0-9]+/g, " ")
+        .replace(/[^a-z09]+/g, " ")
         .trim()
         .replace(/\s+/g, " ");
     }
@@ -422,7 +433,53 @@
       const dateStr = new Intl.DateTimeFormat("it-IT", { dateStyle: "medium" }).format(new Date());
       const label = state === "subscribed" ? "Live sync attivo" : state === "error" ? "Riconnessione..." : "Connessione...";
       const dotColor = state === "subscribed" ? "var(--green)" : state === "error" ? "#f59e0b" : "#91a4b8";
-      el.innerHTML = `${esc(dateStr)} · <span class="live-pill"><span class="live-dot" style="background:${dotColor};box-shadow:0 0 8px ${dotColor};"></span>${esc(label)}</span>`;
+      const extra = syncFeedback ? ` · <strong style="color:var(--green2);">${esc(syncFeedback)}</strong>` : "";
+      el.innerHTML = `${esc(dateStr)} · <span class="live-pill"><span class="live-dot" style="background:${dotColor};box-shadow:0 0 8px ${dotColor};"></span>${esc(label)}</span>${extra}`;
+    }
+
+    async function forceSyncFromSofascore() {
+      if (!isAdmin) return;
+      const btn = document.getElementById("adminForceSyncBtn");
+      btn.disabled = true;
+      btn.textContent = "⏳ Sync in corso...";
+      syncFeedback = "Aggiornamento forzato in corso...";
+      setLiveStatus(realtimeChannel ? "subscribed" : "connecting");
+
+      try {
+        const { data: sessData } = await sb.auth.getSession();
+        const token = sessData?.session?.access_token || SUPABASE_KEY;
+        const selectedLeague = LEAGUES.find((l) => l.tab === currentTab);
+        const qs = new URLSearchParams({ force: "true" });
+        if (selectedLeague) {
+          qs.set("league", selectedLeague.name);
+        }
+
+        const res = await fetch(`${SYNC_FUNCTION_URL}?${qs.toString()}`, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${token}`,
+            "apikey": SUPABASE_KEY,
+            "Content-Type": "application/json",
+          },
+        });
+
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok || payload?.ok === false) {
+          syncFeedback = `Errore sync: ${payload?.error || `HTTP ${res.status}`}`;
+        } else if (payload.rateLimited) {
+          syncFeedback = `Salvati ${payload.count ?? 0} match (limite 429 raggiunto)`;
+        } else {
+          syncFeedback = `Aggiornati ${payload.count ?? 0} match da Sofascore`;
+        }
+
+        await loadMatches();
+      } catch (err) {
+        syncFeedback = `Errore rete: ${err?.message || "sync fallito"}`;
+        setLiveStatus("error");
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "🔄 Forza Sync Sofa";
+      }
     }
 
     function renderIncidents(m) {
@@ -554,7 +611,6 @@
       const started = isMatchStartedOrFinished(m);
       const stLower = String(m.status || "").toLowerCase();
 
-      // Se la partita è live o finita e l'utente non ha già scelto una tab, apre subito il tabellino
       const defaultTab = started ? "tabellino" : "partita";
       const activePanel = openMatchTabs[String(m.id)] || defaultTab;
 
@@ -647,7 +703,6 @@
         return;
       }
 
-      // Mantiene visibili tutte le partite in programma, live e concluse da meno di 4 ore
       const activeList = dedupeMatches(matchesData)
         .filter((m) => isActiveOrUpcoming(m) && matchesSelectedDate(m.kickoff))
         .sort((a, b) => {
@@ -770,6 +825,8 @@
         panel.append(row);
       });
     }
+
+    document.getElementById("adminForceSyncBtn").addEventListener("click", forceSyncFromSofascore);
 
     document.querySelectorAll(".cal-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -928,6 +985,7 @@
       main.style.display = "block";
       footer.style.display = "block";
       document.getElementById("accountLabel").textContent = isAdmin ? "Amministratore" : session.user.email;
+      document.getElementById("adminForceSyncBtn").style.display = isAdmin ? "inline-flex" : "none";
       document.getElementById("adminRequestsTab").style.display = isAdmin ? "inline-flex" : "none";
 
       await loadMatches();
