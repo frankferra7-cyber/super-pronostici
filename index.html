@@ -325,6 +325,7 @@
     const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
     let currentTab = "oggi";
     let selectedDateFilter = null;
+    let calendarMode = "all";
     let authMode = "login";
     let matchesData = [];
     let isAdmin = false;
@@ -345,12 +346,54 @@
       return `${y}-${m}-${d}`;
     }
 
+    function getSevenDaysRange() {
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(start);
+      end.setDate(end.getDate() + 7);
+      end.setHours(23, 59, 59, 999);
+      return { startMs: start.getTime(), endMs: end.getTime() };
+    }
+
+    function isWithinNext7Days(isoKickoff) {
+      const ms = new Date(isoKickoff).getTime();
+      if (!Number.isFinite(ms)) return false;
+      const { startMs, endMs } = getSevenDaysRange();
+      return ms >= startMs && ms <= endMs;
+    }
+
+    function formatDayLabel(isoKickoff) {
+      const d = new Date(isoKickoff);
+      const ymd = toLocalYmd(d);
+      const todayYmd = toLocalYmd(new Date());
+      const tomDate = new Date();
+      tomDate.setDate(tomDate.getDate() + 1);
+      const tomYmd = toLocalYmd(tomDate);
+
+      const formatted = new Intl.DateTimeFormat("it-IT", {
+        weekday: "long",
+        day: "2-digit",
+        month: "long",
+      }).format(d);
+      const cap = formatted.charAt(0).toUpperCase() + formatted.slice(1);
+
+      if (ymd === todayYmd) return `Oggi · ${cap}`;
+      if (ymd === tomYmd) return `Domani · ${cap}`;
+      return cap;
+    }
+
     function matchesSelectedDate(isoKickoff) {
-      if (!selectedDateFilter) return true;
-      return toLocalYmd(new Date(isoKickoff)) === selectedDateFilter;
+      if (selectedDateFilter) {
+        return toLocalYmd(new Date(isoKickoff)) === selectedDateFilter;
+      }
+      if (calendarMode === "all" && currentTab !== "storico") {
+        return isWithinNext7Days(isoKickoff);
+      }
+      return true;
     }
 
     function syncCalendarButtons(mode) {
+      calendarMode = mode;
       document.querySelectorAll(".cal-btn").forEach((b) => {
         b.classList.toggle("active", b.dataset.cal === mode);
       });
@@ -391,7 +434,7 @@
         .normalize("NFD")
         .replace(/[\u0300-\u036f]/g, "")
         .replace(/\b(fc|cfc|ac|as|ss|ssc|us|calcio|football club|club|sportiva|polisportiva|1899|1900|1907|1908|1909|1919|1926|1927)\b/gi, " ")
-        .replace(/[^a-z09]+/g, " ")
+        .replace(/[^a-z0-9]+/g, " ")
         .trim()
         .replace(/\s+/g, " ");
     }
@@ -442,14 +485,14 @@
       const btn = document.getElementById("adminForceSyncBtn");
       btn.disabled = true;
       btn.textContent = "⏳ Sync in corso...";
-      syncFeedback = "Aggiornamento forzato in corso...";
+      syncFeedback = "Aggiornamento 7 giorni in corso...";
       setLiveStatus(realtimeChannel ? "subscribed" : "connecting");
 
       try {
         const { data: sessData } = await sb.auth.getSession();
         const token = sessData?.session?.access_token || SUPABASE_KEY;
         const selectedLeague = LEAGUES.find((l) => l.tab === currentTab);
-        const qs = new URLSearchParams({ force: "true" });
+        const qs = new URLSearchParams({ force: "true", days: "7", limit: "20" });
         if (selectedLeague) {
           qs.set("league", selectedLeague.name);
         }
@@ -467,9 +510,9 @@
         if (!res.ok || payload?.ok === false) {
           syncFeedback = `Errore sync: ${payload?.error || `HTTP ${res.status}`}`;
         } else if (payload.rateLimited) {
-          syncFeedback = `Salvati ${payload.count ?? 0} match (limite 429 raggiunto)`;
+          syncFeedback = `Salvati ${payload.count ?? 0} match (limite 429 attivo)`;
         } else {
-          syncFeedback = `Aggiornati ${payload.count ?? 0} match da Sofascore`;
+          syncFeedback = `Aggiornati ${payload.count ?? 0} match (7gg)`;
         }
 
         await loadMatches();
@@ -610,6 +653,8 @@
       const live = isMatchLive(m);
       const started = isMatchStartedOrFinished(m);
       const stLower = String(m.status || "").toLowerCase();
+      const roundNum = p?.round;
+      const roundBadge = roundNum ? ` · G.${esc(roundNum)}` : "";
 
       const defaultTab = started ? "tabellino" : "partita";
       const activePanel = openMatchTabs[String(m.id)] || defaultTab;
@@ -645,7 +690,7 @@
       return `
         <article class="card match-card ${live ? "is-live" : ""}" data-match-id="${esc(m.id)}">
           <div class="card-top">
-            <div class="league">${esc(m.league)}</div>
+            <div class="league">${esc(m.league)}${roundBadge}</div>
             ${statusBadge}
           </div>
           <div class="match">
@@ -677,6 +722,22 @@
           <div class="match-panel" data-view="ammoniti" ${activePanel === "ammoniti" ? "" : "hidden"}>${renderPlayerList(stats.ammoniti)}</div>
         </article>
       `;
+    }
+
+    function renderGroupedByDay(items) {
+      const dayMap = new Map();
+      for (const m of items) {
+        const ymd = toLocalYmd(new Date(m.kickoff));
+        if (!dayMap.has(ymd)) {
+          dayMap.set(ymd, { label: formatDayLabel(m.kickoff), matches: [] });
+        }
+        dayMap.get(ymd).matches.push(m);
+      }
+
+      return Array.from(dayMap.values()).map((grp) => `
+        <div class="league-heading"><strong>${esc(grp.label)}</strong><span>${grp.matches.length} partite</span></div>
+        ${grp.matches.map(matchCard).join("")}
+      `).join("");
     }
 
     function render() {
@@ -712,7 +773,10 @@
         });
 
       const selectedLeague = LEAGUES.find((l) => l.tab === currentTab);
-      const baseTitle = selectedLeague ? selectedLeague.name : (currentTab === "oggi" ? "Partite in programma e Live" : "Tutte le partite");
+      const windowTag = !selectedDateFilter && calendarMode === "all" ? " (7 giorni)" : "";
+      const baseTitle = selectedLeague
+        ? `${selectedLeague.name}${windowTag}`
+        : (currentTab === "oggi" ? `Partite in programma e Live${windowTag}` : `Tutte le partite${windowTag}`);
       titleEl.textContent = selectedDateFilter ? `${baseTitle} · ${selectedDateFilter}` : baseTitle;
 
       const list = selectedLeague
@@ -725,7 +789,7 @@
       }
 
       if (selectedLeague) {
-        contentEl.innerHTML = list.map(matchCard).join("");
+        contentEl.innerHTML = renderGroupedByDay(list);
         return;
       }
 
