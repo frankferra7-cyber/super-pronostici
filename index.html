@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
   <meta name="theme-color" content="#081321" />
-  <meta name="description" content="Super Pronostici: analisi calcistiche e stime AI per partite e giocatori." />
+  <meta name="description" content="Super Pronostici: analisi calcistiche, risultati live e tabellini." />
   <title>Super Pronostici</title>
   <style>
     :root {
@@ -17,6 +17,7 @@
       --text: #f3f7fb;
       --green: #a3ff35;
       --green2: #d1ff9b;
+      --live: #ef4444;
     }
     * { box-sizing: border-box; }
     body {
@@ -108,16 +109,36 @@
       background: linear-gradient(155deg, #14283a, #0e1b2a);
       border: 1px solid var(--line); border-radius: 18px; padding: 17px; min-width: 0; overflow: hidden;
     }
+    .card.is-live { border-color: #ef4444aa; box-shadow: 0 0 24px #ef444418; }
+    .card-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
     .league { color: var(--green2); font-size: 11px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
+    .status-badge {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 800;
+    }
+    .status-live { background: #ef444426; border: 1px solid #ef4444; color: #fca5a5; }
+    .status-live::before {
+      content: ""; width: 7px; height: 7px; border-radius: 50%; background: #ef4444;
+      animation: pulseLive 1.2s infinite;
+    }
+    .status-ft { background: #1e293b; border: 1px solid #475569; color: #cbd5e1; }
+    @keyframes pulseLive { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
+
     .match {
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
       align-items: center;
-      gap: 8px;
+      gap: 10px;
       margin: 14px 0 4px;
     }
     .team { font-weight: 750; font-size: 15px; min-width: 0; overflow-wrap: anywhere; }
     .vs { color: var(--muted); font-size: 11px; flex-shrink: 0; }
+    .score-box {
+      background: #091523; border: 1px solid #2b455b; border-radius: 10px;
+      padding: 4px 10px; font-size: 17px; font-weight: 900; letter-spacing: .04em;
+      color: var(--green); white-space: nowrap;
+    }
+    .score-box.live { border-color: #ef4444; color: #fff; }
     .time { font-size: 12px; color: var(--muted); }
     .chips { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 12px; }
     .chip { background: #1c3448; border: 1px solid #2c485c; border-radius: 9px; padding: 6px 9px; font-size: 12px; color: #dce8f2; }
@@ -146,8 +167,17 @@
     }
     .lineup-list { list-style: none; padding: 0; margin: 8px 0 0; }
     .lineup-item {
-      padding: 5px 0; border-bottom: 1px solid #23384b;
-      display: flex; justify-content: space-between; gap: 8px; font-size: 13px;
+      padding: 6px 0; border-bottom: 1px solid #23384b;
+      display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px;
+    }
+    .inc-row {
+      padding: 7px 0; border-bottom: 1px solid #23384b;
+      display: flex; align-items: center; gap: 8px; font-size: 13px;
+    }
+    .inc-row.away { justify-content: flex-end; text-align: right; }
+    .inc-min {
+      background: #1c3448; color: var(--green); font-weight: 800;
+      padding: 2px 6px; border-radius: 6px; font-size: 11px; flex-shrink: 0;
     }
     .auth-card {
       max-width: 460px; margin: 7vh auto; padding: 26px;
@@ -225,12 +255,12 @@
   <main id="appMain" style="display:none;">
     <section class="hero">
       <div class="eyebrow">La tua centrale calcistica</div>
-      <h1>Leggi la partita.<br><span style="color:var(--green);">Analizza i numeri.</span></h1>
-      <p>Pronostici e statistiche per i principali campionati europei, con formazioni e analisi dedicate ai giocatori.</p>
+      <h1>Leggi la partita.<br><span style="color:var(--green);">Segui il live.</span></h1>
+      <p>Pronostici, risultati in diretta, tabellini e formazioni ufficiali dei principali campionati europei.</p>
     </section>
 
     <nav aria-label="Campionati e sezioni">
-      <button class="active" data-tab="oggi">⚡ Oggi</button>
+      <button class="active" data-tab="oggi">⚡ Oggi & Live</button>
       <button data-tab="tutte">Tutte</button>
       <button data-tab="seriea">🇮🇹 Serie A</button>
       <button data-tab="epl">🏴 Premier</button>
@@ -252,7 +282,7 @@
 
     <section>
       <div class="section-head">
-        <h2 id="sectionTitle">Partite in programma</h2>
+        <h2 id="sectionTitle">Partite in programma e Live</h2>
         <span id="statusBar"></span>
       </div>
       <div id="content" class="grid"></div>
@@ -314,6 +344,25 @@
       });
     }
 
+    function isMatchLive(m) {
+      return String(m.status || "").toLowerCase() === "inprogress";
+    }
+
+    function isMatchStartedOrFinished(m) {
+      const st = String(m.status || "").toLowerCase();
+      if (st === "inprogress" || st === "finished") return true;
+      return new Date(m.kickoff).getTime() <= Date.now();
+    }
+
+    // Mantiene la partita visibile nelle schede principali anche quando inizia e durante/subito dopo il match
+    function isActiveOrUpcoming(m) {
+      const st = String(m.status || "").toLowerCase();
+      if (st === "inprogress") return true;
+      const kickoffMs = new Date(m.kickoff).getTime();
+      const fourHoursAgo = Date.now() - 4 * 3600 * 1000;
+      return kickoffMs >= fourHoursAgo;
+    }
+
     function normalizeRow(row) {
       if (!row) return null;
       return {
@@ -338,13 +387,13 @@
 
     function recordCompletenessScore(m) {
       let score = 0;
+      if (isMatchLive(m)) score += 40;
+      if (m.home_score !== null && m.away_score !== null) score += 15;
+      if (Array.isArray(m.prediction?.incidents) && m.prediction.incidents.length) score += 15;
       if (Array.isArray(m.home_lineup?.startXI)) score += m.home_lineup.startXI.length;
       if (Array.isArray(m.away_lineup?.startXI)) score += m.away_lineup.startXI.length;
       if (m.home_lineup?.isOfficial) score += 25;
       if (m.away_lineup?.isOfficial) score += 25;
-      if (Array.isArray(m.player_stats?.marcatori) && m.player_stats.marcatori.length) score += 10;
-      if (Array.isArray(m.player_stats?.tiri) && m.player_stats.tiri.length) score += 10;
-      if (Array.isArray(m.player_stats?.ammoniti) && m.player_stats.ammoniti.length) score += 10;
       return score;
     }
 
@@ -374,6 +423,35 @@
       const label = state === "subscribed" ? "Live sync attivo" : state === "error" ? "Riconnessione..." : "Connessione...";
       const dotColor = state === "subscribed" ? "var(--green)" : state === "error" ? "#f59e0b" : "#91a4b8";
       el.innerHTML = `${esc(dateStr)} · <span class="live-pill"><span class="live-dot" style="background:${dotColor};box-shadow:0 0 8px ${dotColor};"></span>${esc(label)}</span>`;
+    }
+
+    function renderIncidents(m) {
+      const incidents = Array.isArray(m.prediction?.incidents) ? m.prediction.incidents : [];
+      if (!incidents.length) {
+        return `<p class="note">${isMatchStartedOrFinished(m) ? "Nessun evento registrato finora nel tabellino." : "Il tabellino si aggiornerà al calcio d'inizio."}</p>`;
+      }
+
+      return incidents.map((inc) => {
+        const minLabel = inc.addedTime ? `${inc.time}+${inc.addedTime}'` : `${inc.time}'`;
+        let icon = "•";
+        let text = esc(inc.player);
+
+        if (inc.type === "goal") {
+          icon = inc.class === "ownGoal" ? "⚽ (Aut.)" : inc.class === "penalty" ? "⚽ (Rig.)" : "⚽";
+          const scoreTag = inc.homeScore !== null && inc.awayScore !== null ? ` <b>[${inc.homeScore}-${inc.awayScore}]</b>` : "";
+          const assistTag = inc.assist ? ` <small style="color:var(--muted);">(assist ${esc(inc.assist)})</small>` : "";
+          text = `${icon} <b>${esc(inc.player)}</b>${scoreTag}${assistTag}`;
+        } else if (inc.type === "card") {
+          icon = inc.class === "red" ? "🟥" : inc.class === "yellowRed" ? "🟨🟥" : "🟨";
+          text = `${icon} ${esc(inc.player)}`;
+        } else if (inc.type === "substitution") {
+          text = `🔄 <span style="color:var(--green);">${esc(inc.playerIn)}</span> <small style="color:var(--muted);">per ${esc(inc.playerOut)}</small>`;
+        }
+
+        return inc.isHome
+          ? `<div class="inc-row"><span class="inc-min">${esc(minLabel)}</span><span>${text}</span></div>`
+          : `<div class="inc-row away"><span>${text}</span><span class="inc-min">${esc(minLabel)}</span></div>`;
+      }).join("");
     }
 
     function renderTeamLineup(lineup, teamName) {
@@ -472,7 +550,24 @@
       const dc = p?.doubleChance || {};
       const eg = p?.expectedGoals || {};
       const stats = getEffectivePlayerStats(m);
-      const activePanel = openMatchTabs[String(m.id)] || "partita";
+      const live = isMatchLive(m);
+      const started = isMatchStartedOrFinished(m);
+      const stLower = String(m.status || "").toLowerCase();
+
+      // Se la partita è live o finita e l'utente non ha già scelto una tab, apre subito il tabellino
+      const defaultTab = started ? "tabellino" : "partita";
+      const activePanel = openMatchTabs[String(m.id)] || defaultTab;
+
+      const statusBadge = live
+        ? `<span class="status-badge status-live">LIVE ${esc(p?.liveMinute || "")}</span>`
+        : stLower === "finished"
+        ? `<span class="status-badge status-ft">FINALE</span>`
+        : "";
+
+      const hasScore = m.home_score !== null && m.home_score !== undefined && m.away_score !== null && m.away_score !== undefined;
+      const centerDisplay = started && hasScore
+        ? `<div class="score-box ${live ? "live" : ""}">${esc(m.home_score)} - ${esc(m.away_score)}</div>`
+        : `<div class="vs">VS</div>`;
 
       const marketsHtml = p
         ? `
@@ -492,23 +587,28 @@
         : `<p class="note">Pronostico non ancora disponibile.</p>`;
 
       return `
-        <article class="card match-card" data-match-id="${esc(m.id)}">
-          <div class="league">${esc(m.league)}</div>
+        <article class="card match-card ${live ? "is-live" : ""}" data-match-id="${esc(m.id)}">
+          <div class="card-top">
+            <div class="league">${esc(m.league)}</div>
+            ${statusBadge}
+          </div>
           <div class="match">
             <div class="team">${esc(m.home)}</div>
-            <div class="vs">VS</div>
+            ${centerDisplay}
             <div class="team" style="text-align:right;">${esc(m.away)}</div>
           </div>
           <div class="time">${fmtDate(m.kickoff)}</div>
 
           <div class="match-tabs">
-            <button type="button" class="match-tab ${activePanel === "partita" ? "active" : ""}" data-panel="partita">Partita</button>
+            <button type="button" class="match-tab ${activePanel === "tabellino" ? "active" : ""}" data-panel="tabellino">⏱️ Tabellino</button>
+            <button type="button" class="match-tab ${activePanel === "partita" ? "active" : ""}" data-panel="partita">Pronostico</button>
             <button type="button" class="match-tab ${activePanel === "formazioni" ? "active" : ""}" data-panel="formazioni">📋 Formazioni</button>
             <button type="button" class="match-tab ${activePanel === "marcatori" ? "active" : ""}" data-panel="marcatori">🎯 Marcatori</button>
-            <button type="button" class="match-tab ${activePanel === "tiri" ? "active" : ""}" data-panel="tiri">🎯 Tiri in porta</button>
+            <button type="button" class="match-tab ${activePanel === "tiri" ? "active" : ""}" data-panel="tiri">🎯 Tiri</button>
             <button type="button" class="match-tab ${activePanel === "ammoniti" ? "active" : ""}" data-panel="ammoniti">🟨 Ammoniti</button>
           </div>
 
+          <div class="match-panel" data-view="tabellino" ${activePanel === "tabellino" ? "" : "hidden"}>${renderIncidents(m)}</div>
           <div class="match-panel" data-view="partita" ${activePanel === "partita" ? "" : "hidden"}>${marketsHtml}</div>
           <div class="match-panel" data-view="formazioni" ${activePanel === "formazioni" ? "" : "hidden"}>
             <div class="lineups-wrap">
@@ -540,21 +640,29 @@
 
       if (currentTab === "storico") {
         titleEl.textContent = "Storico";
-        const past = dedupeMatches(matchesData).filter((m) => new Date(m.kickoff) < new Date() && matchesSelectedDate(m.kickoff));
+        const past = dedupeMatches(matchesData).filter((m) => !isActiveOrUpcoming(m) && matchesSelectedDate(m.kickoff));
         contentEl.innerHTML = past.length
           ? past.map(matchCard).join("")
           : `<div class="card empty">Nessuna partita passata disponibile per questo filtro.</div>`;
         return;
       }
 
-      const upcoming = dedupeMatches(matchesData).filter((m) => new Date(m.kickoff) >= new Date() && matchesSelectedDate(m.kickoff));
+      // Mantiene visibili tutte le partite in programma, live e concluse da meno di 4 ore
+      const activeList = dedupeMatches(matchesData)
+        .filter((m) => isActiveOrUpcoming(m) && matchesSelectedDate(m.kickoff))
+        .sort((a, b) => {
+          const liveDiff = Number(isMatchLive(b)) - Number(isMatchLive(a));
+          if (liveDiff !== 0) return liveDiff;
+          return new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime();
+        });
+
       const selectedLeague = LEAGUES.find((l) => l.tab === currentTab);
-      const baseTitle = selectedLeague ? selectedLeague.name : (currentTab === "oggi" ? "Partite in programma" : "Tutte le partite");
+      const baseTitle = selectedLeague ? selectedLeague.name : (currentTab === "oggi" ? "Partite in programma e Live" : "Tutte le partite");
       titleEl.textContent = selectedDateFilter ? `${baseTitle} · ${selectedDateFilter}` : baseTitle;
 
       const list = selectedLeague
-        ? upcoming.filter((m) => m.league === selectedLeague.name)
-        : upcoming;
+        ? activeList.filter((m) => m.league === selectedLeague.name)
+        : activeList;
 
       if (!list.length) {
         contentEl.innerHTML = `<div class="card empty">Nessuna partita disponibile per la data o il campionato selezionato.</div>`;
